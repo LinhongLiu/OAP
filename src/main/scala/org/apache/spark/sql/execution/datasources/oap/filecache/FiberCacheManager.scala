@@ -57,8 +57,8 @@ private[oap] sealed case class ConfigurationCache[T](key: T, conf: Configuration
  * TODO: Handle bug that release can be called twice.
  */
 private[oap] case class FiberData(
-    memory: MemoryBlock,
-    release: () => Unit = () => {}) {
+    private val memory: MemoryBlock,
+    private val releaseFunc: () => Unit = () => {}) {
 
   /**
    * toArray may cause copy memory from off-heap to on-heap. Should be avoid.
@@ -72,6 +72,12 @@ private[oap] case class FiberData(
   def baseObj: AnyRef = memory.getBaseObject
   def baseOffset: Long = memory.getBaseOffset
   def length: Long = memory.size()
+
+  private var released = false
+  def release(): Unit = {
+    if (!released) releaseFunc()
+    else released = true
+  }
 }
 
 private[oap] object FiberData {
