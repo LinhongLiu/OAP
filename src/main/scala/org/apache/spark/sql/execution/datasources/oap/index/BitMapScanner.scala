@@ -26,7 +26,6 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FSDataInputStream, Path}
 import org.roaringbitmap.buffer.ImmutableRoaringBitmap
 import org.roaringbitmap.buffer.MutableRoaringBitmap
-import sun.nio.ch.DirectBuffer
 
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
 import org.apache.spark.sql.catalyst.InternalRow
@@ -52,16 +51,16 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
   private var bmFooterOffset: Int = _
 
   private var bmFooterFiber: BitmapFiber = _
-  private var bmFooterCache: CacheResult = _
+  private var bmFooterCache: FiberData = _
 
   private var bmUniqueKeyListFiber: BitmapFiber = _
-  private var bmUniqueKeyListCache: CacheResult = _
+  private var bmUniqueKeyListCache: FiberData = _
 
   private var bmOffsetListFiber: BitmapFiber = _
-  private var bmOffsetListCache: CacheResult = _
+  private var bmOffsetListCache: FiberData = _
 
   private var bmEntryListFiber: BitmapFiber = _
-  private var bmEntryListCache: CacheResult = _
+  private var bmEntryListCache: FiberData = _
 
   @transient private var bmRowIdIterator: Iterator[Integer] = _
   private var empty: Boolean = _
@@ -71,23 +70,19 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
       true
     } else {
       if (bmFooterFiber != null) {
-        if (bmFooterCache.cached) FiberCacheManager.releaseLock(bmFooterFiber)
-        else bmFooterCache.buffer.dispose()
+        bmFooterCache.release()
       }
 
       if (bmUniqueKeyListFiber != null) {
-        if (bmUniqueKeyListCache.cached) FiberCacheManager.releaseLock(bmUniqueKeyListFiber)
-        else bmUniqueKeyListCache.buffer.dispose()
+        bmUniqueKeyListCache.release()
       }
 
       if (bmOffsetListFiber != null) {
-        if (bmOffsetListCache.cached) FiberCacheManager.releaseLock(bmOffsetListFiber)
-        else bmOffsetListCache.buffer.dispose()
+        bmUniqueKeyListCache.release()
       }
 
       if (bmEntryListFiber != null) {
-        if (bmEntryListCache.cached) FiberCacheManager.releaseLock(bmEntryListFiber)
-        else bmEntryListCache.buffer.dispose()
+        bmEntryListCache.release()
       }
       false
     }
@@ -101,11 +96,8 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
     bmFooterBuffer
   }
 
-  private def readBmFooterFromCache(cr: CacheResult): Unit = {
-    val (baseObj, baseOffset): (AnyRef, Long) = cr.buffer.chunks.head match {
-      case db: DirectBuffer => (null, db.address())
-      case _ => (cr.buffer.toArray, Platform.BYTE_ARRAY_OFFSET)
-    }
+  private def readBmFooterFromCache(data: FiberData): Unit = {
+    val (baseObj, baseOffset): (AnyRef, Long) = (data.baseObj, data.baseOffset)
     bmUniqueKeyListTotalSize = Platform.getInt(baseObj, baseOffset)
     bmUniqueKeyListCount = Platform.getInt(baseObj, baseOffset + 4)
     bmEntryListTotalSize = Platform.getInt(baseObj, baseOffset + 8)
@@ -120,11 +112,8 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
     bmUniqueKeyListBuffer
   }
 
-  private def readBmUniqueKeyListFromCache(cr: CacheResult): mutable.ListBuffer[InternalRow] = {
-    val (baseObj, baseOffset): (AnyRef, Long) = cr.buffer.chunks.head match {
-      case db: DirectBuffer => (null, db.address())
-      case _ => (cr.buffer.toArray, Platform.BYTE_ARRAY_OFFSET)
-    }
+  private def readBmUniqueKeyListFromCache(data: FiberData): mutable.ListBuffer[InternalRow] = {
+    val (baseObj, baseOffset): (AnyRef, Long) = (data.baseObj, data.baseOffset)
     val uniqueKeyList = new mutable.ListBuffer[InternalRow]()
     var curOffset = baseOffset
     for(idx <- 0 until bmUniqueKeyListCount) {
@@ -236,10 +225,8 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
 
   private def getDesiredBitmapList: List[ImmutableRoaringBitmap] = {
     val keyList = readBmUniqueKeyListFromCache(bmUniqueKeyListCache)
-    val (baseObj, baseOffset): (AnyRef, Long) = bmOffsetListCache.buffer.chunks.head match {
-      case db: DirectBuffer => (null, db.address())
-      case _ => (bmOffsetListCache.buffer.toArray, Platform.BYTE_ARRAY_OFFSET)
-    }
+    val (baseObj, baseOffset): (AnyRef, Long) =
+      (bmOffsetListCache.baseObj, bmOffsetListCache.baseOffset)
     val bitmapList = intervalArray.toList.flatMap(range => {
       val (startIdx, endIdx) = getBitmapIdx(keyList.toIndexedSeq, range)
       if (startIdx == -1 || endIdx == -1) {
@@ -248,7 +235,7 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
       } else {
         val startIdxOffset = getStartIdxOffset(baseObj, baseOffset, startIdx)
         val curPosition = startIdxOffset - bmEntryListOffset
-        getDesiredBitmaps(bmEntryListCache.buffer.toArray, curPosition, startIdx, endIdx + 1)
+        getDesiredBitmaps(bmEntryListCache.toArray, curPosition, startIdx, endIdx + 1)
       }
     })
     bitmapList

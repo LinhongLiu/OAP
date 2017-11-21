@@ -17,13 +17,13 @@
 
 package org.apache.spark.sql.execution.datasources.oap.filecache
 
-import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
 
 import scala.collection.mutable
 
 import com.google.common.cache._
 import org.apache.hadoop.conf.Configuration
+import sun.nio.ch.DirectBuffer
 
 import org.apache.spark.{SparkConf, SparkEnv}
 import org.apache.spark.executor.custom.CustomManager
@@ -53,9 +53,36 @@ private[oap] sealed case class ConfigurationCache[T](key: T, conf: Configuration
   }
 }
 
-private[oap] class CacheResult (
-  val cached: Boolean,
-  val buffer: ChunkedByteBuffer)
+private[oap] case class FiberData(
+    baseObj: AnyRef,
+    baseOffset: Long,
+    length: Long,
+    release: () => Unit = () => {}) {
+
+  /**
+   * toArray may cause copy memory from off-heap to on-heap. Should be avoid.
+   */
+  def toArray: Array[Byte] = {
+    assert(length <= Int.MaxValue, "FiberData exceeds maximum size (Int.MaxValue).")
+    val bytes = new Array[Byte](length.toInt)
+    Platform.copyMemory(baseObj, baseOffset, bytes, Platform.BYTE_ARRAY_OFFSET, length)
+    bytes
+  }
+}
+
+private[oap] object FiberData {
+  def apply(data: Array[Byte]): FiberData = {
+    FiberData(data, Platform.BYTE_ARRAY_OFFSET, data.length)
+  }
+
+  def apply(data: ChunkedByteBuffer, release: () => Unit): FiberData = {
+    assert(data.chunks.length == 1, "FiberData in Spark BlockManager can have only one chunk")
+    data.chunks.head match {
+      case db: DirectBuffer => FiberData(null, db.address(), data.size, release)
+      case _ => throw new OapException("FiberData in Spark BlockManager can only be off-heap")
+    }
+  }
+}
 
 /**
  * Fiber Cache Manager
@@ -64,8 +91,12 @@ object FiberCacheManager extends Logging {
 
   private val dataFileIdMap = new TimeStampedHashMap[String, DataFile](updateTimeStampOnGet = true)
 
-  private def toByteBuffer(buf: Array[Byte]): ChunkedByteBuffer = {
-    new ChunkedByteBuffer(ByteBuffer.wrap(buf))
+  private def toChunkedByteBuffer(buf: Array[Byte]): ChunkedByteBuffer = {
+    val allocator = Platform.allocateDirectBuffer _
+    val byteBuffer = allocator(buf.length)
+    byteBuffer.put(buf)
+    byteBuffer.flip()
+    new ChunkedByteBuffer(byteBuffer)
   }
 
   def fiber2Block(fiber: Fiber): BlockId = {
@@ -74,7 +105,7 @@ object FiberCacheManager extends Logging {
         dataFileIdMap.getOrElseUpdate(file.path, file)
         FiberBlockId("data_" + file.path + "_" + columnIndex + "_" + rowGroupId)
       case IndexFiber(file) =>
-        // TODO: Need to improve this if we have multiple fibers in one index file
+        // TODO: this should be removed
         FiberBlockId("index_" + file.file)
       case BTreeFiber(_, file, section, idx) =>
         FiberBlockId("btree_" + file + "_" + section + "_" + idx)
@@ -101,45 +132,43 @@ object FiberCacheManager extends Logging {
     blockManager.releaseLock(blockId)
   }
 
-  def getOrElseUpdate(fiber: Fiber, conf: Configuration): CacheResult = {
+  def getOrElseUpdate(fiber: Fiber, conf: Configuration): FiberData = {
     // Make sure no exception if no SparkContext is created.
-    if (SparkEnv.get == null) return new CacheResult(false, fiber2Data(fiber, conf))
+    if (SparkEnv.get == null) return FiberData(fiber2Data(fiber, conf))
     val blockManager = SparkEnv.get.blockManager
     val blockId = fiber2Block(fiber)
     logDebug("Fiber name: " + blockId.name)
     val storageLevel = StorageLevel(useDisk = false, useMemory = true,
       useOffHeap = true, deserialized = false, 1)
 
-    val allocator = Platform.allocateDirectBuffer _
     blockManager.getLocalBytes(blockId) match {
       case Some(buffer) =>
         logDebug("Got fiber from cache.")
-        new CacheResult(true, buffer)
+        FiberData(buffer, () => blockManager.releaseLock(blockId))
       case None =>
         logDebug("No fiber found. Build it")
         val bytes = fiber2Data(fiber, conf)
-        // For the sake of simplicity, only support one ByteBuffer in ChunkedBytesBuffer currently.
-        assert(bytes.chunks.length == 1, "Fiber data can have only one ByteBuffer")
-        val offHeapBytes = bytes.copy(allocator)
+        val offHeapBytes = toChunkedByteBuffer(bytes)
         // If put bytes into BlockManager failed, means there is no enough off-heap memory.
         // So, use on-heap memory after failure.
         if (blockManager.putBytes(blockId, offHeapBytes, storageLevel)) {
           logDebug("Put fiber to cache success")
-          new CacheResult(true, blockManager.getLocalBytes(blockId).get)
+          FiberData(
+            blockManager.getLocalBytes(blockId).get, () => blockManager.releaseLock(blockId))
         } else {
           logDebug("Put fiber to cache fail")
           offHeapBytes.dispose()
-          new CacheResult(false, bytes)
+          FiberData(bytes)
         }
     }
   }
 
-  def fiber2Data(fiber: Fiber, conf: Configuration): ChunkedByteBuffer = fiber match {
+  def fiber2Data(fiber: Fiber, conf: Configuration): Array[Byte] = fiber match {
     case DataFiber(file, columnIndex, rowGroupId) =>
       file.getFiberData(rowGroupId, columnIndex, conf)
     case IndexFiber(file) => file.getIndexFiberData(conf)
-    case BTreeFiber(getFiberData, _, _, _) => toByteBuffer(getFiberData())
-    case BitmapFiber(getFiberData, _, _, _) => toByteBuffer(getFiberData())
+    case BTreeFiber(getFiberData, _, _, _) => getFiberData()
+    case BitmapFiber(getFiberData, _, _, _) => getFiberData()
     case other => throw new OapException(s"Cannot identify what's $other")
   }
 
