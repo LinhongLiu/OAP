@@ -17,14 +17,12 @@
 
 package org.apache.spark.sql.execution.datasources.oap.filecache
 
+import java.nio.DirectByteBuffer
 import java.util.concurrent.TimeUnit
 
 import scala.collection.mutable
-
 import com.google.common.cache._
 import org.apache.hadoop.conf.Configuration
-import sun.nio.ch.DirectBuffer
-
 import org.apache.spark.{SparkConf, SparkEnv}
 import org.apache.spark.executor.custom.CustomManager
 import org.apache.spark.internal.Logging
@@ -33,9 +31,11 @@ import org.apache.spark.sql.execution.datasources.oap.io._
 import org.apache.spark.sql.execution.datasources.oap.utils.CacheStatusSerDe
 import org.apache.spark.storage.{BlockId, FiberBlockId, StorageLevel}
 import org.apache.spark.unsafe.Platform
+import org.apache.spark.unsafe.memory.MemoryBlock
 import org.apache.spark.util.TimeStampedHashMap
 import org.apache.spark.util.collection.BitSet
 import org.apache.spark.util.io.ChunkedByteBuffer
+import sun.nio.ch.DirectBuffer
 
 
 // TODO need to register within the SparkContext
@@ -53,32 +53,39 @@ private[oap] sealed case class ConfigurationCache[T](key: T, conf: Configuration
   }
 }
 
+/**
+ * TODO: Handle bug that release can be called twice.
+ */
 private[oap] case class FiberData(
-    baseObj: AnyRef,
-    baseOffset: Long,
-    length: Long,
+    memory: MemoryBlock,
     release: () => Unit = () => {}) {
 
   /**
    * toArray may cause copy memory from off-heap to on-heap. Should be avoid.
    */
   def toArray: Array[Byte] = {
-    assert(length <= Int.MaxValue, "FiberData exceeds maximum size (Int.MaxValue).")
+    assert(memory.size() <= Int.MaxValue, "FiberData exceeds maximum size (Int.MaxValue).")
     val bytes = new Array[Byte](length.toInt)
     Platform.copyMemory(baseObj, baseOffset, bytes, Platform.BYTE_ARRAY_OFFSET, length)
     bytes
   }
+  def baseObj: AnyRef = memory.getBaseObject
+  def baseOffset: Long = memory.getBaseOffset
+  def length: Long = memory.size()
 }
 
 private[oap] object FiberData {
   def apply(data: Array[Byte]): FiberData = {
-    FiberData(data, Platform.BYTE_ARRAY_OFFSET, data.length)
+    val memoryBlock = new MemoryBlock(data, Platform.BYTE_ARRAY_OFFSET, data.length)
+    FiberData(memoryBlock)
   }
 
   def apply(data: ChunkedByteBuffer, release: () => Unit): FiberData = {
     assert(data.chunks.length == 1, "FiberData in Spark BlockManager can have only one chunk")
     data.chunks.head match {
-      case db: DirectBuffer => FiberData(null, db.address(), data.size, release)
+      case db: DirectBuffer =>
+        val memoryBlock = new MemoryBlock(null, db.address(), data.size)
+        FiberData(memoryBlock, release)
       case _ => throw new OapException("FiberData in Spark BlockManager can only be off-heap")
     }
   }
@@ -92,7 +99,7 @@ object FiberCacheManager extends Logging {
   private val dataFileIdMap = new TimeStampedHashMap[String, DataFile](updateTimeStampOnGet = true)
 
   private def toChunkedByteBuffer(buf: Array[Byte]): ChunkedByteBuffer = {
-    val allocator = Platform.allocateDirectBuffer _
+    val allocator = MemoryManager.allocateDirectBuffer _
     val byteBuffer = allocator(buf.length)
     byteBuffer.put(buf)
     byteBuffer.flip()
@@ -115,7 +122,6 @@ object FiberCacheManager extends Logging {
   }
 
   def block2Fiber(blockId: BlockId): Fiber = {
-
     val FiberDataBlock = "fiber_data_(.*)_([0-9]+)_([0-9]+)".r
     blockId.name match {
       case FiberDataBlock(fileId, columnIndex, rowGroupId) =>
@@ -123,13 +129,6 @@ object FiberCacheManager extends Logging {
         DataFiber(dataFile, columnIndex.toInt, rowGroupId.toInt)
       case _ => throw new OapException("unknown blockId: " + blockId.name)
     }
-  }
-
-  def releaseLock(fiber: Fiber): Unit = {
-    val blockId = fiber2Block(fiber)
-    logDebug("Release lock for: " + blockId.name)
-    val blockManager = SparkEnv.get.blockManager
-    blockManager.releaseLock(blockId)
   }
 
   def getOrElseUpdate(fiber: Fiber, conf: Configuration): FiberData = {
