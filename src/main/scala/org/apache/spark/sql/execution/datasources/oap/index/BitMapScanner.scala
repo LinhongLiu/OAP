@@ -78,7 +78,7 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
       }
 
       if (bmOffsetListFiber != null) {
-        bmUniqueKeyListCache.release()
+        bmOffsetListCache.release()
       }
 
       if (bmEntryListFiber != null) {

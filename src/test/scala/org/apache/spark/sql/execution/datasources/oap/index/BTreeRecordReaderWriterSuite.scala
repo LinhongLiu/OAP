@@ -28,6 +28,7 @@ import org.apache.spark.SparkFunSuite
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.oap.filecache.FiberData
 import org.apache.spark.sql.types._
+import org.apache.spark.unsafe.Platform
 import org.apache.spark.unsafe.types.UTF8String
 import org.apache.spark.util.{ByteBufferOutputStream, Utils}
 
@@ -75,7 +76,7 @@ class BTreeRecordReaderWriterSuite extends SparkFunSuite {
       IndexUtils.writeBasedOnDataType(writer, value)
 
       val (answerValue, offset) = IndexUtils.readBasedOnDataType(
-        FiberData(buf.toByteArray), 0, toSparkDataType(value))
+        buf.toByteArray, Platform.BYTE_ARRAY_OFFSET, toSparkDataType(value))
 
       assert(value === answerValue, s"value: $value")
       value match {
@@ -99,7 +100,7 @@ class BTreeRecordReaderWriterSuite extends SparkFunSuite {
       val writer = new LittleEndianDataOutputStream(buf)
       BTreeIndexRecordWriter.writeBasedOnSchema(writer, row, schema)
       val answerRow = BTreeIndexRecordReader.readBasedOnSchema(
-        FiberData(buf.toByteArray), 0, schema)
+        buf.toByteArray, Platform.BYTE_ARRAY_OFFSET, schema)
       assert(row.equals(answerRow))
     }
   }

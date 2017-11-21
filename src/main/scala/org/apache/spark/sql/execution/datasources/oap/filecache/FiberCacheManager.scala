@@ -17,12 +17,14 @@
 
 package org.apache.spark.sql.execution.datasources.oap.filecache
 
-import java.nio.DirectByteBuffer
 import java.util.concurrent.TimeUnit
 
 import scala.collection.mutable
+
 import com.google.common.cache._
 import org.apache.hadoop.conf.Configuration
+import sun.nio.ch.DirectBuffer
+
 import org.apache.spark.{SparkConf, SparkEnv}
 import org.apache.spark.executor.custom.CustomManager
 import org.apache.spark.internal.Logging
@@ -35,8 +37,6 @@ import org.apache.spark.unsafe.memory.MemoryBlock
 import org.apache.spark.util.TimeStampedHashMap
 import org.apache.spark.util.collection.BitSet
 import org.apache.spark.util.io.ChunkedByteBuffer
-import sun.nio.ch.DirectBuffer
-
 
 // TODO need to register within the SparkContext
 class OapFiberCacheHeartBeatMessager extends CustomManager with Logging {

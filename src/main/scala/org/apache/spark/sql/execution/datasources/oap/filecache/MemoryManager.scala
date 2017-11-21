@@ -22,7 +22,6 @@ import java.nio.ByteBuffer
 import org.apache.spark.internal.Logging
 import org.apache.spark.unsafe.Platform
 
-
 private[oap] object MemoryManager extends Logging {
 
   def allocateDirectBuffer(size: Int): ByteBuffer = {
