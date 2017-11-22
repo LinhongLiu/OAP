@@ -26,7 +26,6 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FSDataInputStream, Path}
 import org.roaringbitmap.buffer.BufferFastAggregation
 import org.roaringbitmap.buffer.ImmutableRoaringBitmap
-import org.roaringbitmap.buffer.MutableRoaringBitmap
 import sun.nio.ch.DirectBuffer
 
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
