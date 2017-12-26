@@ -17,10 +17,8 @@
 
 package org.apache.spark.sql.execution.datasources.oap.filecache
 
-import java.util.concurrent.{Callable, TimeUnit}
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
-
-import scala.collection.JavaConverters._
 
 import com.google.common.cache._
 import org.apache.hadoop.conf.Configuration
@@ -28,6 +26,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.spark.{SparkConf, SparkEnv}
 import org.apache.spark.executor.custom.CustomManager
 import org.apache.spark.internal.Logging
+import org.apache.spark.sql.execution.datasources.OapException
 import org.apache.spark.sql.execution.datasources.oap.io._
 import org.apache.spark.sql.execution.datasources.oap.utils.CacheStatusSerDe
 import org.apache.spark.util.collection.BitSet
@@ -48,68 +47,18 @@ object FiberCacheManager extends Logging {
 
   def removeIndexCache(indexName: String): Unit = {
     logDebug(s"going to remove cache of $indexName, executor: ${SparkEnv.get.executorId}")
-    logDebug("cache size before remove: " + cache.size())
-    val fiberToBeRemoved = cache.asMap().keySet().asScala.filter {
-      case BTreeFiber(_, file, _, _) => file.contains(indexName)
-      case BitmapFiber(_, file, _, _) => file.contains(indexName)
-      case _ => false
-    }.asJava
-    cache.invalidateAll(fiberToBeRemoved)
-    logDebug("cache size after remove: " + cache.size())
+    logDebug("cache size before remove: " + cache.cacheCount)
+    cache.invalidateAll(cache.getIndexFibers(indexName))
+    logDebug("cache size after remove: " + cache.cacheCount)
   }
-
-  private val removalListener = new RemovalListener[Fiber, FiberCache] {
-    override def onRemoval(notification: RemovalNotification[Fiber, FiberCache]): Unit = {
-      // TODO: Change the log more readable
-      logDebug(s"Removing Cache ${notification.getKey}")
-      // TODO: Investigate lock mechanism to secure in-used FiberCache
-      notification.getValue.dispose()
-      _cacheSize.addAndGet(-notification.getValue.size())
-    }
-  }
-  private val weigher = new Weigher[Fiber, FiberCache] {
-    override def weigh(key: Fiber, value: FiberCache): Int =
-      math.ceil(value.size() / MB).toInt
-  }
-
-  private val MB: Double = 1024 * 1024
-  private val MAX_WEIGHT = (MemoryManager.maxMemory / MB).toInt
-
-  // Total cached size for debug purpose
-  private val _cacheSize: AtomicLong = new AtomicLong(0)
-
-  /**
-   * To avoid storing configuration in each Cache, use a loader.
-   * After all, configuration is not a part of Fiber.
-   */
-  private def cacheLoader(fiber: Fiber, configuration: Configuration) =
-    new Callable[FiberCache] {
-      override def call(): FiberCache = {
-        logDebug(s"Loading Cache $fiber")
-        val fiberCache = fiber.fiber2Data(configuration)
-        _cacheSize.addAndGet(fiberCache.size())
-        fiberCache
-      }
-    }
-
-  private val cache = CacheBuilder.newBuilder()
-      .recordStats()
-      .concurrencyLevel(4)
-      .removalListener(removalListener)
-      .maximumWeight(MAX_WEIGHT)
-      .weigher(weigher)
-      .build[Fiber, FiberCache]()
 
   def get(fiber: Fiber, conf: Configuration): FiberCache = {
-    // Used a flag called disposed in FiberCache to indicate if this FiberCache is removed
-    cache.get(fiber, cacheLoader(fiber, conf))
+    cache.get(fiber, conf)
   }
 
   // TODO: test case, consider data eviction, try not use DataFileHandle which my be costly
   private[filecache] def status: String = {
-    val dataFibers = cache.asMap().keySet().asScala.collect {
-      case fiber: DataFiber => fiber
-    }
+    val dataFibers = cache.getDataFibers
 
     val statusRawData = dataFibers.groupBy(_.file).map {
       case (dataFile, fiberSet) =>
@@ -123,9 +72,26 @@ object FiberCacheManager extends Logging {
     CacheStatusSerDe.serialize(statusRawData)
   }
 
-  def cacheStats: CacheStats = cache.stats()
+  def cacheStats: CacheStats = cache.cacheStats
 
-  def cacheSize : Long = _cacheSize.get()
+  def cacheSize : Long = cache.cacheSize
+
+  private val cache: OapCache = {
+    val sparkEnv = SparkEnv.get
+    if (sparkEnv == null) {
+      // TODO: or throw an exception?
+      new GuavaOapCache(MemoryManager.maxMemory)
+    } else {
+      val cacheName = sparkEnv.conf.get("spark.oap.cache.strategy", "guava")
+      if (cacheName.equals("guava")) {
+        new GuavaOapCache(MemoryManager.maxMemory)
+      } else if (cacheName.equals("simple")) {
+        new SimpleOapCache()
+      } else {
+        throw new OapException("Unsupported cache strategy")
+      }
+    }
+  }
 }
 
 private[oap] object DataFileHandleCacheManager extends Logging {
