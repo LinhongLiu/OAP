@@ -81,7 +81,10 @@ class MemoryManagerSuite extends SharedOapContext {
       })
       val nnkw = new NonNullKeyWriter(schema)
       nnkw.writeKey(buf, InternalRow.fromSeq(values))
-      MemoryManager.putToDataFiberCache(buf.toByteArray)
+      val fiberCache = MemoryManager.putToDataFiberCache(buf.toByteArray)
+      // This means we move the FiberCache from buffer to CacheManager.
+      MemoryManager.releaseBufferMemory(fiberCache.size())
+      fiberCache
     }
   }
 
@@ -108,6 +111,8 @@ class MemoryManagerSuite extends SharedOapContext {
     random.nextBytes(bytes)
     val is = createInputStreamFromBytes(bytes)
     val indexFiberCache = MemoryManager.putToIndexFiberCache(is, 0, 10240)
+    // This means we move the FiberCache from buffer to CacheManager.
+    MemoryManager.releaseBufferMemory(indexFiberCache.size())
     assert(bytes === indexFiberCache.toArray)
   }
 
@@ -115,6 +120,8 @@ class MemoryManagerSuite extends SharedOapContext {
     val bytes = new Array[Byte](10240)
     random.nextBytes(bytes)
     val dataFiberCache = MemoryManager.putToDataFiberCache(bytes)
+    // This means we move the FiberCache from buffer to CacheManager.
+    MemoryManager.releaseBufferMemory(dataFiberCache.size())
     assert(bytes === dataFiberCache.toArray)
   }
 
@@ -161,6 +168,8 @@ class MemoryManagerSuite extends SharedOapContext {
     // 1. disposed FiberCache
     val bytes = new Array[Byte](1024)
     val fiberCache = MemoryManager.putToDataFiberCache(bytes)
+    // This means we move the FiberCache from buffer to CacheManager.
+    MemoryManager.releaseBufferMemory(fiberCache.size())
     fiberCache.dispose()
     val exception = intercept[OapException]{
       fiberCache.getByte(0)

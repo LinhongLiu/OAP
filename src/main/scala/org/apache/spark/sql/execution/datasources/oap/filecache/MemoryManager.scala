@@ -133,36 +133,53 @@ private[oap] object MemoryManager extends Logging {
   private val DUMMY_BLOCK_ID = TestBlockId("oap_memory_request_block")
 
   // TODO: a config to control max memory size
-  private val _maxMemory = {
+  private val (_cacheMemory, _bufferMemory) = {
     if (SparkEnv.get == null) {
       throw new OapException("No SparkContext is found")
     } else {
       val memoryManager = SparkEnv.get.memoryManager
       // TODO: make 0.7 configurable
-      val oapMaxMemory = (memoryManager.maxOffHeapStorageMemory * 0.7).toLong
-      if (memoryManager.acquireStorageMemory(DUMMY_BLOCK_ID, oapMaxMemory, MemoryMode.OFF_HEAP)) {
-        oapMaxMemory
+      val fraction = SparkEnv.get.conf.getDouble("spark.oap.memory.offHeap.fraction", 0.7)
+      val oapCacheMemory = (memoryManager.maxOffHeapStorageMemory * fraction).toLong
+      val oapBufferMemory =
+        SparkEnv.get.conf.getLong("spark.oap.memory.buffer.size", 10 * 1024 * 1024)
+      if (memoryManager.acquireStorageMemory(
+        DUMMY_BLOCK_ID, oapCacheMemory + oapBufferMemory, MemoryMode.OFF_HEAP)) {
+        (oapCacheMemory, oapBufferMemory)
       } else {
         throw new OapException("Can't acquire memory from spark Memory Manager")
       }
     }
   }
 
+  def cacheMemory: Long = _cacheMemory
+
   // TODO: Atomic is really needed?
-  private val _memoryUsed = new AtomicLong(0)
-  def memoryUsed: Long = _memoryUsed.get()
-  def maxMemory: Long = _maxMemory
+  private val _bufferMemoryUsed = new AtomicLong(0)
+  def bufferMemoryUsed: Long = _bufferMemoryUsed.get()
+  def bufferMemory: Long = _bufferMemory
 
   private[filecache] def allocate(numOfBytes: Int): MemoryBlock = {
-    _memoryUsed.getAndAdd(numOfBytes)
-    logDebug(s"allocate $numOfBytes memory, used: $memoryUsed")
+    // use buffer memory to allocate fiber
+    val usedMemory = _bufferMemoryUsed.addAndGet(numOfBytes)
+    if (usedMemory > bufferMemory) {
+      // _bufferMemoryUsed.addAndGet(-numOfBytes)
+      // TODO: sleep until there is memory
+      logWarning(s"Used too many buffer memory to allocate FiberCache, " +
+          s"used: $usedMemory, limit: $bufferMemory")
+    }
+    logDebug(s"allocate $numOfBytes memory, used: $bufferMemoryUsed")
     MemoryAllocator.UNSAFE.allocate(numOfBytes)
   }
 
   private[filecache] def free(memoryBlock: MemoryBlock): Unit = {
     MemoryAllocator.UNSAFE.free(memoryBlock)
-    _memoryUsed.getAndAdd(-memoryBlock.size())
-    logDebug(s"freed ${memoryBlock.size()} memory, used: $memoryUsed")
+  }
+
+  def releaseBufferMemory(numOfBytes: Long): Unit = {
+    // Moved fiber to cache manager means release buffer memory
+    _bufferMemoryUsed.getAndAdd(-numOfBytes)
+    logDebug(s"freed $numOfBytes memory, used: $bufferMemoryUsed")
   }
 
   // Used by IndexFile

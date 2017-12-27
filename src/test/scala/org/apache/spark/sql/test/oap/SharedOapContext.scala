@@ -30,6 +30,9 @@ trait SharedOapContext extends SharedSQLContext {
 
   // avoid the overflow of offHeap memory
   sparkConf.set("spark.memory.offHeap.size", "100m")
+  sparkConf.set("spark.oap.memory.offHeap.fraction", "0.7")
+  sparkConf.set("spark.oap.memory.buffer.size", "1048576")
+
   protected override def beforeAll(): Unit = {
     super.beforeAll()
     spark.sqlContext.setConf(SQLConf.OAP_BTREE_ROW_LIST_PART_SIZE, 64)
