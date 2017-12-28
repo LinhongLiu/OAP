@@ -68,7 +68,7 @@ class FiberCacheManagerSuite extends SharedOapContext {
     val fiberCache = FiberCacheManager.get(fiber, configuration)
     assert(!fiberCache.isDisposed)
 
-    val data1 = generateData(memorySizeInMB * mbSize / 2)
+    val data1 = generateData(memorySizeInMB * mbSize / 4)
     val fiber1 = TestFiber(() => MemoryManager.putToDataFiberCache(data1), s"test fiber #1")
     val fiberCache1 = FiberCacheManager.get(fiber1, configuration)
     assert(fiberCache1.isDisposed)

@@ -31,7 +31,8 @@ trait SharedOapContext extends SharedSQLContext {
   // avoid the overflow of offHeap memory
   sparkConf.set("spark.memory.offHeap.size", "100m")
   sparkConf.set("spark.oap.memory.offHeap.fraction", "0.7")
-  sparkConf.set("spark.oap.memory.buffer.size", "1048576")
+  // 30MB Buffer Memory allow we allocate a FiberCache too large to fit into cache
+  sparkConf.set("spark.oap.memory.buffer.size", "31457280")
 
   protected override def beforeAll(): Unit = {
     super.beforeAll()

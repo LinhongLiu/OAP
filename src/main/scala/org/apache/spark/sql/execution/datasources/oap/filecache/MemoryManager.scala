@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.execution.datasources.oap.filecache
 
-import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.Semaphore
 
 import org.apache.hadoop.fs.FSDataInputStream
 
@@ -143,6 +143,7 @@ private[oap] object MemoryManager extends Logging {
       val oapCacheMemory = (memoryManager.maxOffHeapStorageMemory * fraction).toLong
       val oapBufferMemory =
         SparkEnv.get.conf.getLong("spark.oap.memory.buffer.size", 10 * 1024 * 1024)
+      assert(oapBufferMemory <= Int.MaxValue, "Buffer memory can't be larger than 2G Bytes")
       if (memoryManager.acquireStorageMemory(
         DUMMY_BLOCK_ID, oapCacheMemory + oapBufferMemory, MemoryMode.OFF_HEAP)) {
         (oapCacheMemory, oapBufferMemory)
@@ -154,21 +155,20 @@ private[oap] object MemoryManager extends Logging {
 
   def cacheMemory: Long = _cacheMemory
 
+  private val bufferSem = new Semaphore(bufferMemory.toInt)
+
   // TODO: Atomic is really needed?
-  private val _bufferMemoryUsed = new AtomicLong(0)
-  def bufferMemoryUsed: Long = _bufferMemoryUsed.get()
+  def bufferMemoryRemaining: Long = bufferSem.availablePermits()
   def bufferMemory: Long = _bufferMemory
 
   private[filecache] def allocate(numOfBytes: Int): MemoryBlock = {
     // use buffer memory to allocate fiber
-    val usedMemory = _bufferMemoryUsed.addAndGet(numOfBytes)
-    if (usedMemory > bufferMemory) {
-      // _bufferMemoryUsed.addAndGet(-numOfBytes)
-      // TODO: sleep until there is memory
-      logWarning(s"Used too many buffer memory to allocate FiberCache, " +
-          s"used: $usedMemory, limit: $bufferMemory")
+    assert(numOfBytes <= bufferMemory, "Fiber Size can't be larger than buffer memory size")
+    if (bufferMemoryRemaining < numOfBytes) {
+      logWarning("No enough buffer to allocate, wait until someone release buffer memory")
     }
-    logDebug(s"allocate $numOfBytes memory, used: $bufferMemoryUsed")
+    bufferSem.acquire(numOfBytes)
+    logDebug(s"allocate $numOfBytes memory, remaining: $bufferMemoryRemaining")
     MemoryAllocator.UNSAFE.allocate(numOfBytes)
   }
 
@@ -178,8 +178,9 @@ private[oap] object MemoryManager extends Logging {
 
   def releaseBufferMemory(numOfBytes: Long): Unit = {
     // Moved fiber to cache manager means release buffer memory
-    _bufferMemoryUsed.getAndAdd(-numOfBytes)
-    logDebug(s"freed $numOfBytes memory, used: $bufferMemoryUsed")
+    assert(numOfBytes <= Int.MaxValue)
+    bufferSem.release(numOfBytes.toInt)
+    logDebug(s"freed $numOfBytes memory, remaining: $bufferMemoryRemaining")
   }
 
   // Used by IndexFile
