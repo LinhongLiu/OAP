@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.execution.datasources.oap.filecache
 
-import java.util.concurrent.Semaphore
+import java.util.concurrent.{Semaphore, TimeUnit}
 
 import org.apache.hadoop.fs.FSDataInputStream
 
@@ -31,12 +31,10 @@ import org.apache.spark.unsafe.Platform
 import org.apache.spark.unsafe.memory.{MemoryAllocator, MemoryBlock}
 import org.apache.spark.unsafe.types.UTF8String
 
-// TODO: make it an alias of MemoryBlock
 trait FiberCache {
   // In our design, fiberData should be a internal member.
   protected def fiberData: MemoryBlock
 
-  // TODO: need a flag to avoid accessing disposed FiberCache
   private var disposed = false
   def isDisposed: Boolean = disposed
   def dispose(): Unit = {
@@ -132,13 +130,11 @@ private[oap] object MemoryManager extends Logging {
    */
   private val DUMMY_BLOCK_ID = TestBlockId("oap_memory_request_block")
 
-  // TODO: a config to control max memory size
   private val (_cacheMemory, _bufferMemory) = {
     if (SparkEnv.get == null) {
       throw new OapException("No SparkContext is found")
     } else {
       val memoryManager = SparkEnv.get.memoryManager
-      // TODO: make 0.7 configurable
       val fraction = SparkEnv.get.conf.getDouble("spark.oap.memory.offHeap.fraction", 0.7)
       val oapCacheMemory = (memoryManager.maxOffHeapStorageMemory * fraction).toLong
       val oapBufferMemory =
@@ -157,7 +153,6 @@ private[oap] object MemoryManager extends Logging {
 
   private val bufferSem = new Semaphore(bufferMemory.toInt)
 
-  // TODO: Atomic is really needed?
   def bufferMemoryRemaining: Long = bufferSem.availablePermits()
   def bufferMemory: Long = _bufferMemory
 
@@ -167,9 +162,12 @@ private[oap] object MemoryManager extends Logging {
     if (bufferMemoryRemaining < numOfBytes) {
       logWarning("No enough buffer to allocate, wait until someone release buffer memory")
     }
-    bufferSem.acquire(numOfBytes)
-    logDebug(s"allocate $numOfBytes memory, remaining: $bufferMemoryRemaining")
-    MemoryAllocator.UNSAFE.allocate(numOfBytes)
+    if (bufferSem.tryAcquire(numOfBytes, 1000, TimeUnit.MILLISECONDS)) {
+      logDebug(s"allocate $numOfBytes memory, remaining: $bufferMemoryRemaining")
+      MemoryAllocator.UNSAFE.allocate(numOfBytes)
+    } else {
+      throw new OapException("Can't acquire memory to allocate FiberCache")
+    }
   }
 
   private[filecache] def free(memoryBlock: MemoryBlock): Unit = {

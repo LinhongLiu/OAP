@@ -17,11 +17,11 @@
 
 package org.apache.spark.sql.execution.datasources.oap.filecache
 
-import scala.util.Random
+import java.util.concurrent.Executors
 
+import scala.util.Random
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FSDataInputStream, Path}
-
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.OapException
 import org.apache.spark.sql.execution.datasources.oap.utils.NonNullKeyWriter
@@ -177,5 +177,29 @@ class MemoryManagerSuite extends SharedOapContext {
     assert(exception.getMessage == "Try to access a freed memory")
 
     // 2. TODO: test Invalidate MemoryBlock
+  }
+
+  test("test buffer memory semaphore") {
+    class MemoryAllocateRunner(i: Int) extends Thread {
+      override def run(): Unit = {
+        val bytes = new Array[Byte](10 * 1024 * 1024)
+        val fiberCache = MemoryManager.putToDataFiberCache(bytes)
+        Thread.sleep(800)
+        MemoryManager.releaseBufferMemory(fiberCache.size())
+      }
+    }
+    val threads = (0 until 5).map(i => new MemoryAllocateRunner(i))
+    threads.foreach(_.start())
+    threads.foreach(_.join())
+  }
+
+  test("test buffer memory semaphore timeout") {
+    val exception = intercept[OapException] {
+      (0 until 10).foreach { _ =>
+        val bytes = new Array[Byte](1024 * 1024 * 4)
+        MemoryManager.putToDataFiberCache(bytes)
+      }
+    }
+    assert(exception.getMessage == "Can't acquire memory to allocate FiberCache")
   }
 }
