@@ -20,8 +20,10 @@ package org.apache.spark.sql.execution.datasources.oap.filecache
 import java.util.concurrent.Executors
 
 import scala.util.Random
+
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FSDataInputStream, Path}
+
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.OapException
 import org.apache.spark.sql.execution.datasources.oap.utils.NonNullKeyWriter
