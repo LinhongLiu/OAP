@@ -23,8 +23,6 @@ import org.apache.hadoop.fs.{FileSystem, Path}
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.io.FileCommitProtocol
-import org.apache.spark.rpc.RpcEndpointRef
-import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages.CacheDrop
 import org.apache.spark.scheduler.cluster.CoarseGrainedSchedulerBackend
 import org.apache.spark.scheduler.local.LocalSchedulerBackend
 import org.apache.spark.sql._
@@ -37,12 +35,12 @@ import org.apache.spark.sql.catalyst.plans.logical.Project
 import org.apache.spark.sql.execution.command.RunnableCommand
 import org.apache.spark.sql.execution.datasources._
 import org.apache.spark.sql.execution.datasources.oap._
+import org.apache.spark.sql.execution.datasources.oap.OapMessages.CacheDrop
 import org.apache.spark.sql.execution.datasources.oap.filecache.FiberCacheManager
 import org.apache.spark.sql.execution.datasources.oap.utils.OapUtils
 import org.apache.spark.sql.execution.datasources.parquet.ParquetFileFormat
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
-import org.apache.spark.util.Utils
 
 
 /**
@@ -221,21 +219,7 @@ case class DropIndex(
       }
     sparkSession.sparkContext.schedulerBackend match {
       case scheduler: CoarseGrainedSchedulerBackend =>
-        // TODO: why we can't just use executorDataMap?
-        val executorDataMapField =
-          classOf[CoarseGrainedSchedulerBackend].getDeclaredField(
-            "org$apache$spark$scheduler$cluster$CoarseGrainedSchedulerBackend$$executorDataMap")
-        executorDataMapField.setAccessible(true)
-        val executorDataMap =
-          executorDataMapField.get(scheduler).asInstanceOf[mutable.HashMap[String, AnyRef]]
-        for ((_, executorData) <- executorDataMap) {
-          val c = Utils.classForName("org.apache.spark.scheduler.cluster.ExecutorData")
-          val executorEndpointField = c.getDeclaredField("executorEndpoint")
-          executorEndpointField.setAccessible(true)
-          val executorEndpoint =
-            executorEndpointField.get(executorData).asInstanceOf[RpcEndpointRef]
-          executorEndpoint.send(CacheDrop(indexName))
-        }
+          OapMessageUtils.sendMessageToExecutors(scheduler, CacheDrop(indexName))
       case _: LocalSchedulerBackend => FiberCacheManager.removeIndexCache(indexName)
     }
     relation match {
