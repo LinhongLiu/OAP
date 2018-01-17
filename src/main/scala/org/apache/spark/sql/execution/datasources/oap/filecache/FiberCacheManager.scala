@@ -50,7 +50,7 @@ private[filecache] class CacheGuardian(maxMemory: Long) extends Thread with Logg
     _pendingFiberSize.addAndGet(fiberCache.size())
     removalPendingQueue.offer(fiberCache)
     if (_pendingFiberSize.get() > maxMemory) {
-      logError("Fibers pending on removal use too much memory, " +
+      logWarning("Fibers pending on removal use too much memory, " +
           s"current: ${_pendingFiberSize.get()}, max: $maxMemory")
     }
   }
