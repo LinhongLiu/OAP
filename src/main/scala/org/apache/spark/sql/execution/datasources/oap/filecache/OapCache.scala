@@ -51,7 +51,7 @@ class SimpleOapCache extends OapCache with Logging {
     val fiberCache = fiber.fiber2Data(conf)
     fiberCache.occupy()
     // We only use fiber for once, and CacheGuardian will dispose it after release.
-    cacheGuardian.addRemovalFiber(fiberCache)
+    cacheGuardian.addRemovalFiber(fiber, fiberCache)
     fiberCache
   }
 
@@ -91,7 +91,7 @@ class GuavaOapCache(cacheMemory: Long, cacheGuardianMemory: Long) extends OapCac
   private val removalListener = new RemovalListener[Fiber, FiberCache] {
     override def onRemoval(notification: RemovalNotification[Fiber, FiberCache]): Unit = {
       logDebug(s"Add Cache into removal list: ${notification.getKey}")
-      cacheGuardian.addRemovalFiber(notification.getValue)
+      cacheGuardian.addRemovalFiber(notification.getKey, notification.getValue)
       _cacheSize.addAndGet(-notification.getValue.size())
     }
   }
@@ -122,15 +122,16 @@ class GuavaOapCache(cacheMemory: Long, cacheGuardianMemory: Long) extends OapCac
     .weigher(weigher)
     .build[Fiber, FiberCache]()
 
-  override def get(fiber: Fiber, conf: Configuration): FiberCache = {
-    val fiberCache = cache.get(fiber, cacheLoader(fiber, conf))
-    // Avoid loading a fiber larger than MAX_WEIGHT / 4, 4 is concurrency number
-    assert(fiberCache.size() <= MAX_WEIGHT * KB / 4,
-      s"Failed to cache fiber(${Utils.bytesToString(fiberCache.size())}) " +
-        s"with cache's MAX_WEIGHT(${Utils.bytesToString(MAX_WEIGHT.toLong * KB.toLong)}) / 4")
-    fiberCache.occupy()
-    fiberCache
-  }
+  override def get(fiber: Fiber, conf: Configuration): FiberCache =
+    FiberLockManager.getFiberLock(fiber).synchronized {
+      val fiberCache = cache.get(fiber, cacheLoader(fiber, conf))
+      // Avoid loading a fiber larger than MAX_WEIGHT / 4, 4 is concurrency number
+      assert(fiberCache.size() <= MAX_WEIGHT * KB / 4,
+        s"Failed to cache fiber(${Utils.bytesToString(fiberCache.size())}) " +
+          s"with cache's MAX_WEIGHT(${Utils.bytesToString(MAX_WEIGHT.toLong * KB.toLong)}) / 4")
+      fiberCache.occupy()
+      fiberCache
+    }
 
   override def getIfPresent(fiber: Fiber): FiberCache = cache.getIfPresent(fiber)
 
