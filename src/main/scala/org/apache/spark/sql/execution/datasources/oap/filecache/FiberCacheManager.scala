@@ -19,6 +19,7 @@ package org.apache.spark.sql.execution.datasources.oap.filecache
 
 import java.util.concurrent.{ConcurrentHashMap, LinkedBlockingQueue, TimeUnit}
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.locks.ReentrantReadWriteLock
 
 import com.google.common.cache._
 import org.apache.hadoop.conf.Configuration
@@ -60,14 +61,12 @@ private[filecache] class CacheGuardian(maxMemory: Long) extends Thread with Logg
     while (true) {
       val (fiber, fiberCache) = removalPendingQueue.take()
       logDebug(s"Removing fiber $fiberCache ...")
-      FiberLockManager.getFiberLock(fiber).synchronized {
-        // Block if fiber is in use.
-        while (!fiberCache.tryDispose(3000)) {
-          // Check memory usage every 3s while we are waiting fiber release.
-          if (_pendingFiberSize.get() > maxMemory) {
-            logWarning("Fibers pending on removal use too much memory, " +
-              s"current: ${_pendingFiberSize.get()}, max: $maxMemory")
-          }
+      // Block if fiber is in use.
+      while (!fiberCache.tryDispose(fiber, 3000)) {
+        // Check memory usage every 3s while we are waiting fiber release.
+        if (_pendingFiberSize.get() > maxMemory) {
+          logWarning("Fibers pending on removal use too much memory, " +
+            s"current: ${_pendingFiberSize.get()}, max: $maxMemory")
         }
       }
       // TODO: Make log more readable
@@ -273,14 +272,18 @@ private[oap] case class TestFiber(getData: () => FiberCache, name: String) exten
 }
 
 object FiberLockManager {
-  val lockMap = new ConcurrentHashMap[Fiber, Object]()
-  def getFiberLock(fiber: Fiber): Object = {
+  private val lockMap = new ConcurrentHashMap[Fiber, ReentrantReadWriteLock]()
+  def getFiberLock(fiber: Fiber): ReentrantReadWriteLock = {
     var lock = lockMap.get(fiber)
     if (lock == null) {
-      val newLock = new Object()
+      val newLock = new ReentrantReadWriteLock()
       val prevLock = lockMap.putIfAbsent(fiber, newLock)
       lock = if (prevLock == null) newLock else prevLock
     }
     lock
+  }
+
+  def removeFiberLock(fiber: Fiber): Unit = {
+    lockMap.remove(fiber)
   }
 }

@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.execution.datasources.oap.filecache
 
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import javax.annotation.concurrent.GuardedBy
 
@@ -52,8 +53,10 @@ trait FiberCache extends Logging {
     notifyAll()
   }
 
-  def tryDispose(timeout: Long): Boolean = synchronized {
+  // TODO: Couple Fiber and FiberCache. Pass fiber as a parameter is weired.
+  def tryDispose(fiber: Fiber, timeout: Long): Boolean = synchronized {
     val startTime = System.currentTimeMillis()
+    val writeLock = FiberLockManager.getFiberLock(fiber).writeLock()
     // Give caller a chance to deal with the long wait case.
     while (System.currentTimeMillis() - startTime <= timeout) {
       if (_refCount > 0) {
@@ -64,8 +67,15 @@ trait FiberCache extends Logging {
             logWarning(s"Fiber Cache Dispose waiting detected for ${this}")
         }
       } else {
-        realDispose()
-        return true
+        // If we can't acquire lock, will return false, and ask caller to try again.
+        if (writeLock.tryLock(200, TimeUnit.MILLISECONDS)) {
+          try {
+            realDispose(fiber)
+            return true
+          } finally {
+            writeLock.unlock()
+          }
+        }
       }
     }
     false
@@ -73,8 +83,11 @@ trait FiberCache extends Logging {
 
   private var disposed = false
   def isDisposed: Boolean = disposed
-  private[filecache] def realDispose(): Unit = {
-    if (!disposed) MemoryManager.free(fiberData)
+  private[filecache] def realDispose(fiber: Fiber): Unit = {
+    if (!disposed) {
+      MemoryManager.free(fiberData)
+      FiberLockManager.removeFiberLock(fiber)
+    }
     disposed = true
   }
 
