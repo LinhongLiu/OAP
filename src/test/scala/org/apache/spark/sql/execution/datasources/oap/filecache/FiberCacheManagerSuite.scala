@@ -228,7 +228,7 @@ class FiberCacheManagerSuite extends SharedOapContext {
     val data = generateData(kbSize)
     val fiber = TestFiber(() => MemoryManager.putToDataFiberCache(data), s"get remove test")
     def occupyWork(): Boolean = {
-      (1 to 100000).foreach { _ =>
+      (1 to 100).foreach { _ =>
         val fiberCache = FiberCacheManager.get(fiber, configuration)
         if (fiberCache.isDisposed) {
           fiberCache.release()
