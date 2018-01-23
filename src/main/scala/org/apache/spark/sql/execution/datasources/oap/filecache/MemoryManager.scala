@@ -19,7 +19,6 @@ package org.apache.spark.sql.execution.datasources.oap.filecache
 
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
-import javax.annotation.concurrent.GuardedBy
 
 import org.apache.hadoop.fs.FSDataInputStream
 
@@ -39,51 +38,47 @@ trait FiberCache extends Logging {
   // In our design, fiberData should be a internal member.
   protected def fiberData: MemoryBlock
 
-  @GuardedBy("FiberCache.this")
-  private var _refCount: Long = 0L
-  def refCount: Long = _refCount
+  // We use readLock to lock occupy. _refCount need be atomic to make sure thread-safe
+  protected val _refCount = new AtomicLong(0)
+  def refCount: Long = _refCount.get()
 
-  def occupy(): Unit = synchronized {
-    _refCount += 1
+  def occupy(): Unit = {
+    _refCount.incrementAndGet()
   }
 
-  def release(): Unit = synchronized {
+  // TODO: seems we are safe even on lock for release.
+  // 1. if we release fiber during another occupy. atomic refCount is thread-safe.
+  // 2. if we release fiber during another tryDispose. the very last release lead to realDispose.
+  def release(): Unit = {
     assert(refCount > 0, "release a non-used fiber")
-    _refCount -= 1
-    notifyAll()
+    _refCount.decrementAndGet()
   }
 
   // TODO: Couple Fiber and FiberCache. Pass fiber as a parameter is weired.
-  def tryDispose(fiber: Fiber, timeout: Long): Boolean = synchronized {
+  def tryDispose(fiber: Fiber, timeout: Long): Boolean = {
     val startTime = System.currentTimeMillis()
     val writeLock = FiberLockManager.getFiberLock(fiber).writeLock()
     // Give caller a chance to deal with the long wait case.
     while (System.currentTimeMillis() - startTime <= timeout) {
-      if (_refCount > 0) {
+      if (writeLock.tryLock(200, TimeUnit.MILLISECONDS)) {
         try {
-          wait(100)
-        } catch {
-          case _: InterruptedException =>
-            logWarning(s"Fiber Cache Dispose waiting detected for ${this}")
-        }
-      } else {
-        // If we can't acquire lock, will return false, and ask caller to try again.
-        if (writeLock.tryLock(200, TimeUnit.MILLISECONDS)) {
-          try {
+          if (refCount == 0) {
             realDispose(fiber)
             return true
-          } finally {
-            writeLock.unlock()
           }
+        } finally {
+          writeLock.unlock()
         }
       }
+      Thread.sleep(100)
+      logWarning(s"Fiber Cache Dispose waiting detected for ${this}")
     }
     false
   }
 
-  private var disposed = false
+  protected var disposed = false
   def isDisposed: Boolean = disposed
-  private[filecache] def realDispose(fiber: Fiber): Unit = {
+  protected[filecache] def realDispose(fiber: Fiber): Unit = {
     if (!disposed) {
       MemoryManager.free(fiberData)
       FiberLockManager.removeFiberLock(fiber)
@@ -99,13 +94,13 @@ trait FiberCache extends Logging {
     bytes
   }
 
-  private def getBaseObj: AnyRef = {
+  protected def getBaseObj: AnyRef = {
     // NOTE: A trick here. Since every function need to get memory data has to get here first.
     // So, here check the if the memory has been freed.
     if (disposed) throw new OapException("Try to access a freed memory")
     fiberData.getBaseObject
   }
-  private def getBaseOffset: Long = fiberData.getBaseOffset
+  protected def getBaseOffset: Long = fiberData.getBaseOffset
 
   def getBoolean(offset: Long): Boolean = Platform.getBoolean(getBaseObj, getBaseOffset + offset)
 
@@ -131,7 +126,7 @@ trait FiberCache extends Logging {
   }
 
   /** TODO: may cause copy memory from off-heap to on-heap, used by [[ColumnValues]] */
-  private def copyMemory(offset: Long, dst: AnyRef, dstOffset: Long, length: Long): Unit =
+  protected def copyMemory(offset: Long, dst: AnyRef, dstOffset: Long, length: Long): Unit =
     Platform.copyMemory(getBaseObj, getBaseOffset + offset, dst, dstOffset, length)
 
   def copyMemoryToLongs(offset: Long, dst: Array[Long]): Unit =
