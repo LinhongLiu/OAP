@@ -21,12 +21,13 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 import org.apache.hadoop.fs.FSDataInputStream
-
 import org.apache.spark.SparkEnv
 import org.apache.spark.internal.Logging
 import org.apache.spark.memory.MemoryMode
 import org.apache.spark.sql.execution.datasources.OapException
 import org.apache.spark.sql.execution.datasources.oap.ColumnValues
+import org.apache.spark.sql.execution.datasources.oap.index.IndexUtils
+import org.apache.spark.sql.execution.datasources.oap.io.CodecFactory
 import org.apache.spark.storage.{BlockManager, TestBlockId}
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.unsafe.memory.{MemoryAllocator, MemoryBlock}
@@ -237,6 +238,24 @@ private[oap] object MemoryManager extends Logging {
   def putToIndexFiberCache(in: FSDataInputStream, position: Long, length: Int): IndexFiberCache = {
     val bytes = new Array[Byte](length)
     in.readFully(position, bytes)
+    val memoryBlock = allocate(bytes.length)
+    Platform.copyMemory(
+      bytes,
+      Platform.BYTE_ARRAY_OFFSET,
+      memoryBlock.getBaseObject,
+      memoryBlock.getBaseOffset,
+      bytes.length)
+    IndexFiberCache(memoryBlock)
+  }
+
+  def putToIndexFiberCache(
+      in: FSDataInputStream,
+      position: Long,
+      length: Int,
+      codecFactory: CodecFactory): IndexFiberCache = {
+    val compressedBytes = new Array[Byte](length)
+    in.readFully(position, compressedBytes)
+    val bytes = IndexUtils.decompressIndexData(codecFactory, compressedBytes)
     val memoryBlock = allocate(bytes.length)
     Platform.copyMemory(
       bytes,

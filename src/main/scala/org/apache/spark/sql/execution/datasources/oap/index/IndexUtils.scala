@@ -19,12 +19,13 @@ package org.apache.spark.sql.execution.datasources.oap.index
 
 import java.io.OutputStream
 
+import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-
+import org.apache.parquet.format.CompressionCodec
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.oap.OapFileFormat
-import org.apache.spark.sql.execution.datasources.oap.io.IndexFile
-
+import org.apache.spark.sql.execution.datasources.oap.io.{CodecFactory, IndexFile}
+import org.apache.spark.unsafe.Platform
 
 /**
  * Utils for Index read/write
@@ -192,5 +193,35 @@ private[oap] object IndexUtils {
       if (!found) m = s
       (m, found)
     }
+  }
+  def compressIndexData(
+      configuration: Configuration,
+      codecFactory: CodecFactory,
+      bytes: Array[Byte]): Array[Byte] = {
+    val codec = CompressionCodec.valueOf(
+        configuration.get(OapFileFormat.COMPRESSION, OapFileFormat.DEFAULT_COMPRESSION))
+    val compressed = codecFactory.getCompressor(codec).compress(bytes)
+    // println("co codec: " + codec + " length: " + bytes.length + " md5: " + hash(bytes))
+    "CODEC".getBytes("UTF-8") ++ toBytes(codec.getValue) ++ toBytes(bytes.length) ++ compressed
+  }
+
+  def decompressIndexData(codecFactory: CodecFactory, bytes: Array[Byte]): Array[Byte] = {
+    val magic: Array[Byte] = "CODEC".getBytes("UTF-8")
+    if (magic.sameElements(bytes.slice(0, magic.length))) {
+      val codec = Platform.getInt(bytes, Platform.BYTE_ARRAY_OFFSET + 5)
+      val c = CompressionCodec.findByValue(codec)
+      val decompressor = codecFactory.getDecompressor(c)
+      val length = Platform.getInt(bytes, Platform.BYTE_ARRAY_OFFSET + 9)
+      val dec = decompressor.decompress(bytes.slice(13, bytes.length), length)
+      // println("de codec: " + c + " length: " + length + " md5: " + hash(dec))
+      dec
+    } else {
+      bytes
+    }
+  }
+
+  def hash(bytes: Array[Byte]): String = {
+    val digest = java.security.MessageDigest.getInstance("MD5")
+    digest.digest(bytes).map(0xFF & _).map { "%02x".format(_) }.foldLeft("") { _ + _ }
   }
 }

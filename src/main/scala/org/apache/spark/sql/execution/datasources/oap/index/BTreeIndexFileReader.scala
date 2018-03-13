@@ -19,11 +19,10 @@ package org.apache.spark.sql.execution.datasources.oap.index
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.execution.datasources.OapException
 import org.apache.spark.sql.execution.datasources.oap.filecache.{FiberCache, MemoryManager}
-import org.apache.spark.sql.execution.datasources.oap.io.IndexFile
+import org.apache.spark.sql.execution.datasources.oap.io.{CodecFactory, IndexFile}
 import org.apache.spark.sql.internal.oap.OapConf
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.util.ShutdownHookManager
@@ -36,6 +35,7 @@ private[oap] case class BTreeIndexFileReader(
   private val FOOTER_LENGTH_SIZE = IndexUtils.INT_SIZE
   private val ROW_ID_LIST_LENGTH_SIZE = IndexUtils.LONG_SIZE
 
+  private val codecFactory = new CodecFactory(configuration)
   // Section ID for fiber cache reading.
   val footerSectionId: Int = 0
   val rowIdListSectionId: Int = 1
@@ -75,7 +75,7 @@ private[oap] case class BTreeIndexFileReader(
   }
 
   def readFooter(): FiberCache =
-    MemoryManager.putToIndexFiberCache(reader, footerIndex, footerLength)
+    MemoryManager.putToIndexFiberCache(reader, footerIndex, footerLength, codecFactory)
 
   def readRowIdList(partIdx: Int): FiberCache = {
     val partSize = rowIdListSizePerSection.toLong * IndexUtils.INT_SIZE
@@ -94,7 +94,7 @@ private[oap] case class BTreeIndexFileReader(
     MemoryManager.putToIndexFiberCache(reader, rowIdListIndex, rowIdListLength.toInt)
 
   def readNode(offset: Int, size: Int): FiberCache =
-    MemoryManager.putToIndexFiberCache(reader, nodesIndex + offset, size)
+    MemoryManager.putToIndexFiberCache(reader, nodesIndex + offset, size, codecFactory)
 
   def close(): Unit = try {
     reader.close()

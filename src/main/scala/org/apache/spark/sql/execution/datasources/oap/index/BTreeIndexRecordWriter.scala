@@ -21,16 +21,14 @@ import java.io.ByteArrayOutputStream
 import java.util.Comparator
 
 import scala.collection.JavaConverters._
-
 import com.google.common.collect.ArrayListMultimap
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.mapreduce.{RecordWriter, TaskAttemptContext}
-
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
 import org.apache.spark.sql.execution.datasources.OapException
-import org.apache.spark.sql.execution.datasources.oap.io.IndexFile
+import org.apache.spark.sql.execution.datasources.oap.io.{CodecFactory, IndexFile}
 import org.apache.spark.sql.execution.datasources.oap.statistics.StatisticsWriteManager
 import org.apache.spark.sql.execution.datasources.oap.utils.{BTreeNode, BTreeUtils, NonNullKeyWriter}
 import org.apache.spark.sql.types._
@@ -43,6 +41,8 @@ private[index] case class BTreeIndexRecordWriter(
 
   @transient private lazy val genericProjector = FromUnsafeProjection(keySchema)
   private lazy val nnkw = new NonNullKeyWriter(keySchema)
+
+  private val codecFactory = new CodecFactory(configuration)
 
   private val multiHashMap = ArrayListMultimap.create[InternalRow, Int]()
   private var recordCount: Int = 0
@@ -183,7 +183,10 @@ private[index] case class BTreeIndexRecordWriter(
       nnkw.writeKey(keyBuffer, key)
       rowPos += multiHashMap.get(key).size()
     }
-    buffer.toByteArray ++ keyBuffer.toByteArray
+    IndexUtils.compressIndexData(
+      configuration,
+      codecFactory,
+      buffer.toByteArray ++ keyBuffer.toByteArray)
   }
 
   // TODO: BTreeNode can be re-write. It doesn't carry any values.
@@ -266,7 +269,11 @@ private[index] case class BTreeIndexRecordWriter(
     // the return of write should be equal to statsBuffer.size
     statisticsManager.write(statsBuffer)
     IndexUtils.writeInt(buffer, statsBuffer.size)
-    buffer.toByteArray ++ statsBuffer.toByteArray ++ keyBuffer.toByteArray
+    IndexUtils.compressIndexData(
+      configuration,
+      codecFactory,
+      buffer.toByteArray ++ statsBuffer.toByteArray ++ keyBuffer.toByteArray
+    )
   }
 }
 
