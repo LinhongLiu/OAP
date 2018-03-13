@@ -89,6 +89,13 @@ private[oap] case class BTreeIndexFileReader(
       readLength.toInt)
   }
 
+  def readRowIdListPart(i: Int, offset: Int, size: Int): FiberCache = {
+    val bytes = new Array[Byte](size)
+    reader.readFully(rowIdListIndex + offset, bytes)
+    // println("read: part: " + i + " offset: " + (rowIdListIndex + offset) + " length: " + bytes.length + " md5: " + IndexUtils.hash(bytes))
+    MemoryManager.putToIndexFiberCache(reader, rowIdListIndex + offset, size, codecFactory)
+  }
+
   @deprecated("no need to read the whole row id list", "v0.3")
   def readRowIdList(): FiberCache =
     MemoryManager.putToIndexFiberCache(reader, rowIdListIndex, rowIdListLength.toInt)
