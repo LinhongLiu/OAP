@@ -21,14 +21,13 @@ import java.sql.Date
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-import org.apache.parquet.format.CompressionCodec
 import org.scalatest.BeforeAndAfterEach
+
 import org.apache.spark.sql.{QueryTest, Row}
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.internal.oap.OapConf
 import org.apache.spark.sql.test.oap.SharedOapContext
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
-import org.apache.spark.unsafe.Platform
 import org.apache.spark.util.Utils
 
 class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEach {
@@ -56,11 +55,9 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
     sql(s"""CREATE TEMPORARY VIEW oap_test (a INT, b STRING)
            | USING oap
            | OPTIONS (path '$path')""".stripMargin)
-    /*
     sql(s"""CREATE TEMPORARY VIEW oap_test_rowgroup (a INT, b STRING)
            | USING oap
            | OPTIONS (path '$path', "rowgroup" '1025', 'compression' 'GZIP')""".stripMargin)
-           */
     sql(s"""CREATE TEMPORARY VIEW oap_test_date (a INT, b DATE)
            | USING oap
            | OPTIONS (path '$path')""".stripMargin)
@@ -80,9 +77,7 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
 
   override def afterEach(): Unit = {
     sqlContext.dropTempTable("oap_test")
-    /*
     sqlContext.dropTempTable("oap_test_rowgroup")
-    */
     sqlContext.dropTempTable("oap_test_date")
     sqlContext.dropTempTable("parquet_test")
     sqlContext.dropTempTable("parquet_test_date")

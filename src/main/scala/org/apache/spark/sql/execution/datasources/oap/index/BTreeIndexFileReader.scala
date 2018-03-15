@@ -19,6 +19,7 @@ package org.apache.spark.sql.execution.datasources.oap.index
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
+
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.execution.datasources.OapException
 import org.apache.spark.sql.execution.datasources.oap.filecache.{FiberCache, MemoryManager}
@@ -92,7 +93,8 @@ private[oap] case class BTreeIndexFileReader(
   def readRowIdListPart(i: Int, offset: Int, size: Int): FiberCache = {
     val bytes = new Array[Byte](size)
     reader.readFully(rowIdListIndex + offset, bytes)
-    // println("read: part: " + i + " offset: " + (rowIdListIndex + offset) + " length: " + bytes.length + " md5: " + IndexUtils.hash(bytes))
+    // println("read: part: " + i + " offset: " +
+    // (rowIdListIndex + offset) + " length: " + bytes.length + " md5: " + IndexUtils.hash(bytes))
     MemoryManager.putToIndexFiberCache(reader, rowIdListIndex + offset, size, codecFactory)
   }
 

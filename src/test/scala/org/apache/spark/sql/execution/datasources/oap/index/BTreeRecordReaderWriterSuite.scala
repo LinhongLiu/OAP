@@ -26,6 +26,7 @@ import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.oap.filecache.FiberCache
+import org.apache.spark.sql.execution.datasources.oap.io.CodecFactory
 import org.apache.spark.sql.types._
 import org.apache.spark.util.Utils
 
@@ -37,15 +38,25 @@ class BTreeRecordReaderWriterSuite extends SparkFunSuite {
    */
   private class TestBTreeIndexFileWriter(conf: Configuration)
     extends BTreeIndexFileWriter(conf, new Path(Utils.createTempDir().getAbsolutePath, "temp")) {
+
+    private val codecFactory = new CodecFactory(conf)
+    val compressedNodes = new ArrayBuffer[Array[Byte]]()
     val nodes = new ArrayBuffer[Array[Byte]]()
     var footer: Array[Byte] = _
     var rowIdList: Array[Byte] = Array()
     override def start(): Unit = {}
     override def end(): Unit = {}
     override def close(): Unit = {}
-    override def writeNode(buf: Array[Byte]): Unit = nodes.append(buf)
-    override def writeRowId(buf: Array[Byte]): Unit = rowIdList ++= buf
-    override def writeFooter(buf: Array[Byte]): Unit = footer = buf
+    override def writeNode(buf: Array[Byte]): Unit = {
+      compressedNodes.append(buf)
+      nodes.append(IndexUtils.decompressIndexData(codecFactory, buf))
+    }
+
+    override def writeRowIdList(buf: Array[Byte]): Unit =
+      rowIdList ++= IndexUtils.decompressIndexData(codecFactory, buf)
+
+    override def writeFooter(buf: Array[Byte]): Unit =
+      footer = IndexUtils.decompressIndexData(codecFactory, buf)
   }
   // Only test simple Int type since read/write based on schema can cover data type test
   private val schema = StructType(StructField("col", IntegerType) :: Nil)
@@ -88,7 +99,7 @@ class BTreeRecordReaderWriterSuite extends SparkFunSuite {
 
     val nodeSizeSeq = (0 until nodeCount).map(footer.getNodeSize)
     val nodeOffsetSeq = (0 until nodeCount).map(footer.getNodeOffset)
-    assert(nodeSizeSeq === fileWriter.nodes.map(_.length))
+    assert(nodeSizeSeq === fileWriter.compressedNodes.map(_.length))
     assert(nodeOffsetSeq === nodeSizeSeq.scanLeft(0)(_ + _).dropRight(1))
 
     val keyOffsetSeq = (0 until nodeCount).map ( i =>

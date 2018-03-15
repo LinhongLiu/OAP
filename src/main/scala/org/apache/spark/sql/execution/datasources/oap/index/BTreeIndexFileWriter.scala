@@ -52,11 +52,6 @@ private case class BTreeIndexFileWriter(
     writer.write(buf)
   }
 
-  def writeRowId(buf: Array[Byte]): Unit = {
-    writer.write(buf)
-    rowIdListSize += buf.length
-  }
-
   def writeRowIdList(buf: Array[Byte]): Unit = {
     writer.write(buf)
     rowIdListSize += buf.length

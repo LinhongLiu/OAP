@@ -21,9 +21,11 @@ import java.io.ByteArrayOutputStream
 import java.util.Comparator
 
 import scala.collection.JavaConverters._
+
 import com.google.common.collect.ArrayListMultimap
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.mapreduce.{RecordWriter, TaskAttemptContext}
+
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
@@ -216,7 +218,8 @@ private[index] case class BTreeIndexRecordWriter(
     var i = 0
     uniqueKeys.grouped(rowIdListSizePerSection).map { partedUniqueKeys =>
       val bytes = serializeRowIdList(partedUniqueKeys)
-      // println("write: part: " + i + " length: " + bytes.length + " md5: " + IndexUtils.hash(bytes))
+      // println(
+      // "write: part: " + i + " length: " + bytes.length + " md5: " + IndexUtils.hash(bytes))
       i += 1
       fileWriter.writeRowIdList(bytes)
       bytes.length
