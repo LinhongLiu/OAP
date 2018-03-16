@@ -32,7 +32,7 @@ import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
 import org.apache.spark.sql.execution.datasources.OapException
 import org.apache.spark.sql.execution.datasources.oap._
 import org.apache.spark.sql.execution.datasources.oap.filecache._
-import org.apache.spark.sql.execution.datasources.oap.io.IndexFile
+import org.apache.spark.sql.execution.datasources.oap.io.{CodecFactory, IndexFile}
 import org.apache.spark.sql.execution.datasources.oap.statistics.StatisticsManager
 import org.apache.spark.sql.execution.datasources.oap.utils.NonNullKeyReader
 import org.apache.spark.util.ShutdownHookManager
@@ -68,6 +68,8 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
 
   private var fin: FSDataInputStream = _
 
+  private var codecFactory: CodecFactory = _
+
   @transient private var bmRowIdIterator: Iterator[Integer] = _
   private var empty: Boolean = _
 
@@ -80,7 +82,7 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
   }
 
   private def loadBmStatsContent(fin: FSDataInputStream, offset: Long, size: Long): FiberCache = {
-    MemoryManager.putToIndexFiberCache(fin, offset, size.toInt)
+    MemoryManager.putToIndexFiberCache(fin, offset, size.toInt, codecFactory)
   }
 
   private def cacheBitmapFooterSegment(idxPath: Path, conf: Configuration): Unit = {
@@ -104,6 +106,9 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
 
   override protected def analyzeStatistics(indexPath: Path, conf: Configuration): Double = {
     var bmStatsContentCache: WrappedFiberCache = null
+    if (codecFactory == null) {
+      codecFactory = new CodecFactory(conf)
+    }
     try {
       val fs = indexPath.getFileSystem(conf)
       fin = fs.open(indexPath)
@@ -148,7 +153,8 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
   private def loadBmKeyList(fin: FSDataInputStream, bmUniqueKeyListOffset: Int): FiberCache = {
     // TODO: seems not supported yet on my local dev machine(hadoop is 2.7.3).
     // fin.setReadahead(bmUniqueKeyListTotalSize)
-    MemoryManager.putToIndexFiberCache(fin, bmUniqueKeyListOffset, bmUniqueKeyListTotalSize)
+    MemoryManager.putToIndexFiberCache(
+      fin, bmUniqueKeyListOffset, bmUniqueKeyListTotalSize, codecFactory)
   }
 
   private def readBmUniqueKeyListFromCache(data: FiberCache): IndexedSeq[InternalRow] = {
@@ -163,19 +169,20 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
 
   private def loadBmEntryList(
       fin: FSDataInputStream, bmEntryListOffset: Int, bmEntryListTotalSize: Int): FiberCache = {
-    MemoryManager.putToIndexFiberCache(fin, bmEntryListOffset, bmEntryListTotalSize)
+    MemoryManager.putToIndexFiberCache(fin, bmEntryListOffset, bmEntryListTotalSize, codecFactory)
   }
 
   private def loadBmOffsetList(
       fin: FSDataInputStream,
       bmOffsetListOffset: Int,
       bmOffsetListTotalSize: Int): FiberCache = {
-    MemoryManager.putToIndexFiberCache(fin, bmOffsetListOffset, bmOffsetListTotalSize)
+    MemoryManager.putToIndexFiberCache(
+      fin, bmOffsetListOffset, bmOffsetListTotalSize, codecFactory)
   }
 
   private def loadBmNullList(
       fin: FSDataInputStream, bmNullEntryOffset: Int, bmNullEntrySize: Int): FiberCache = {
-    MemoryManager.putToIndexFiberCache(fin, bmNullEntryOffset, bmNullEntrySize)
+    MemoryManager.putToIndexFiberCache(fin, bmNullEntryOffset, bmNullEntrySize, codecFactory)
   }
 
   private def checkVersionNum(versionNum: Int, fin: FSDataInputStream): Unit = {
@@ -358,6 +365,10 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
     assert(keySchema.fields.length == 1)
     this.ordering = GenerateOrdering.create(keySchema)
     val idxPath = IndexUtils.indexFileFromDataFile(dataPath, meta.name, meta.time)
+
+    if (codecFactory == null) {
+      codecFactory = new CodecFactory(conf)
+    }
 
     cacheBitmapAllSegments(idxPath, conf)
     try {

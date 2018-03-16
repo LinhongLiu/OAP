@@ -30,7 +30,7 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.FromUnsafeProjection
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
 import org.apache.spark.sql.execution.datasources.OapException
-import org.apache.spark.sql.execution.datasources.oap.io.IndexFile
+import org.apache.spark.sql.execution.datasources.oap.io.{CodecFactory, IndexFile}
 import org.apache.spark.sql.execution.datasources.oap.statistics.StatisticsWriteManager
 import org.apache.spark.sql.execution.datasources.oap.utils.NonNullKeyWriter
 import org.apache.spark.sql.types._
@@ -102,6 +102,8 @@ private[oap] class BitmapIndexRecordWriter(
   private var bmOffsetListTotalSize: Int = _
   private var bmIndexEnd: Int = _
 
+  private val codecFactory = new CodecFactory(configuration)
+
   override def write(key: Void, value: InternalRow): Unit = {
     val v = genericProjector(value).copy()
     if (!rowMapBitmap.contains(v)) {
@@ -132,12 +134,15 @@ private[oap] class BitmapIndexRecordWriter(
     bmUniqueKeyList = uniqueKeyList.sorted(ordering)
     val bos = new ByteArrayOutputStream()
     bmUniqueKeyList.foreach(key => nnkw.writeKey(bos, key))
-    bmUniqueKeyListTotalSize = bos.size()
+    val compressedBytes = IndexUtils.compressIndexData(configuration, codecFactory, bos.toByteArray)
+    bmUniqueKeyListTotalSize = compressedBytes.length
     bmUniqueKeyListCount = bmUniqueKeyList.size
-    writer.write(bos.toByteArray)
+    writer.write(compressedBytes)
   }
 
   private def writeBmEntryList(): Unit = {
+    val bos = new ByteArrayOutputStream()
+    val dos = new DataOutputStream(bos)
     /* TODO: 1. Use BitSet of Spark or Scala or Java to replace roaring bitmap.
      *       2. Optimize roaring bitmap usage to further reduce index file size.
      */
@@ -147,32 +152,33 @@ private[oap] class BitmapIndexRecordWriter(
     var totalBitmapSize = 0
     bmUniqueKeyList.foreach(uniqueKey => {
       bmOffsetListBuffer.append(bmEntryListOffset + totalBitmapSize)
-      val bm = rowMapBitmap.get(uniqueKey).get
+      val bm = rowMapBitmap(uniqueKey)
       bm.runOptimize()
-      val bos = new ByteArrayOutputStream()
-      val dos = new DataOutputStream(bos)
       // Below serialization is directly written into byte/int/long arrays
       // according to roaring bitmap internal format(http://roaringbitmap.org/).
       bm.serialize(dos)
       dos.flush()
-      totalBitmapSize += bos.size
-      writer.write(bos.toByteArray)
-      dos.close()
-      bos.close()
+      totalBitmapSize += bm.serializedSizeInBytes()
     })
-    bmEntryListTotalSize = totalBitmapSize
+    val compressedBytes = IndexUtils.compressIndexData(configuration, codecFactory, bos.toByteArray)
+    writer.write(compressedBytes)
+    dos.close()
+    bos.close()
+    bmEntryListTotalSize = compressedBytes.length
 
     // Write entry for null value rows if exists
     if (bmNullKeyList.nonEmpty) {
       bmNullEntryOffset = bmEntryListOffset + totalBitmapSize
-      val bm = rowMapBitmap.get(bmNullKeyList.head).get
+      val bm = rowMapBitmap(bmNullKeyList.head)
       bm.runOptimize()
       val bos = new ByteArrayOutputStream()
       val dos = new DataOutputStream(bos)
       bm.serialize(dos)
       dos.flush()
-      bmNullEntrySize = bos.size
-      writer.write(bos.toByteArray)
+      val compressedBytes =
+        IndexUtils.compressIndexData(configuration, codecFactory, bos.toByteArray)
+      bmNullEntrySize = compressedBytes.length
+      writer.write(compressedBytes)
       dos.close()
       bos.close()
     }
@@ -180,16 +186,24 @@ private[oap] class BitmapIndexRecordWriter(
 
   private def writeBmOffsetList(): Unit = {
     // write offset for each bitmap entry to fast locate expected bitmap entries during scanning.
-    bmOffsetListBuffer.foreach(offsetIdx => IndexUtils.writeInt(writer, offsetIdx))
-    bmOffsetListTotalSize = 4 * bmOffsetListBuffer.size
+    val bos = new ByteArrayOutputStream()
+    val dos = new DataOutputStream(bos)
+    bmOffsetListBuffer.foreach(offsetIdx => IndexUtils.writeInt(dos, offsetIdx))
+    val compressedBytes = IndexUtils.compressIndexData(configuration, codecFactory, bos.toByteArray)
+    bmOffsetListTotalSize = compressedBytes.length
+    writer.write(compressedBytes)
   }
 
   private def writeBmFooter(): Unit = {
+    val bos = new ByteArrayOutputStream()
+    val dos = new DataOutputStream(bos)
     // The beginning of the footer are bitmap total size, key list size and offset total size.
     // Others keep back compatible and not changed than before.
     bmIndexEnd = bmEntryListOffset + bmEntryListTotalSize + bmNullEntrySize + bmOffsetListTotalSize
     // The index end is also the starting position of statistics part.
-    val statSize = statisticsWriteManager.write(writer)
+    statisticsWriteManager.write(dos)
+    val compressedBytes = IndexUtils.compressIndexData(configuration, codecFactory, bos.toByteArray)
+    writer.write(compressedBytes)
     IndexUtils.writeInt(writer, IndexFile.VERSION_NUM)
     IndexUtils.writeInt(writer, bmUniqueKeyListTotalSize)
     IndexUtils.writeInt(writer, bmUniqueKeyListCount)
@@ -198,7 +212,7 @@ private[oap] class BitmapIndexRecordWriter(
     IndexUtils.writeInt(writer, bmNullEntryOffset)
     IndexUtils.writeInt(writer, bmNullEntrySize)
     IndexUtils.writeLong(writer, bmIndexEnd)
-    IndexUtils.writeLong(writer, statSize.toLong)
+    IndexUtils.writeLong(writer, compressedBytes.length.toLong)
   }
 
   private def flushToFile(): Unit = {
