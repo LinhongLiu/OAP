@@ -81,7 +81,7 @@ trait FiberCache extends Logging {
         }
       }
     }
-    logWarning(s"Fiber Cache Dispose waiting detected for ${fiber}")
+    logWarning(s"Fiber Cache Dispose waiting detected for $fiber")
     false
   }
 

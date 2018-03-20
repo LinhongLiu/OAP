@@ -946,15 +946,4 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
     sql("drop oindex idx1 on parquet_test")
     sql("drop oindex idx2 on parquet_test")
   }
-
-  // scalastyle:off println
-  test("test codec") {
-    val magic = "CODEC".getBytes("UTF-8")
-    val other = "OTHER".getBytes("UTF-8")
-    val bytes = magic ++ other
-    magic sameElements bytes.slice(0, magic.length)
-
-    println(magic.equals(bytes.slice(0, magic.length)))
-
-  }
 }

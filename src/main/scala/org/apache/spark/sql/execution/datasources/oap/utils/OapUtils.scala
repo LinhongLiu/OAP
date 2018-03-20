@@ -200,6 +200,4 @@ object OapUtils extends Logging {
     fileIndex.refresh()
     getPartitions(fileIndex, partitionSpec)
   }
-
-
 }

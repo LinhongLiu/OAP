@@ -203,7 +203,6 @@ private[oap] object IndexUtils {
     val codec = CompressionCodec.valueOf(
         configuration.get(OapFileFormat.COMPRESSION, OapFileFormat.DEFAULT_COMPRESSION))
     val compressed = codecFactory.getCompressor(codec).compress(bytes)
-    // println("co codec: " + codec + " length: " + bytes.length + " md5: " + hash(bytes))
     "CODEC".getBytes("UTF-8") ++ toBytes(codec.getValue) ++ toBytes(bytes.length) ++ compressed
   }
 
@@ -215,7 +214,6 @@ private[oap] object IndexUtils {
       val decompressor = codecFactory.getDecompressor(c)
       val length = Platform.getInt(bytes, Platform.BYTE_ARRAY_OFFSET + 9)
       val dec = decompressor.decompress(bytes.slice(13, bytes.length), length)
-      // println("de codec: " + c + " length: " + length + " md5: " + hash(dec))
       dec
     } else {
       bytes

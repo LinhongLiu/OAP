@@ -87,7 +87,7 @@ private[oap] case class BTreeIndexFileReader(
   def readFooter(): FiberCache =
     MemoryManager.putToIndexFiberCache(readData(reader, footerIndex, footerLength))
 
-  def readRowIdListPart(i: Int, offset: Int, size: Int): FiberCache = {
+  def readRowIdList(offset: Int, size: Int): FiberCache = {
     MemoryManager.putToIndexFiberCache(readData(reader, rowIdListIndex + offset, size))
   }
 

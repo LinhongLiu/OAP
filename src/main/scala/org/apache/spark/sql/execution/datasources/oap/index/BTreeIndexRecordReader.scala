@@ -70,7 +70,7 @@ private[index] case class BTreeIndexRecordReader(
           val rowIdListPartStart = footer.getRowIdListPartOffset(partIdx)
           val rowIdListPartSize = footer.getRowIdListPartSize(partIdx)
           val rowIdListFiber = BTreeFiber(
-            () => reader.readRowIdListPart(partIdx, rowIdListPartStart, rowIdListPartSize),
+            () => reader.readRowIdList(rowIdListPartStart, rowIdListPartSize),
             reader.file.toString,
             reader.rowIdListSectionId, partIdx)
 

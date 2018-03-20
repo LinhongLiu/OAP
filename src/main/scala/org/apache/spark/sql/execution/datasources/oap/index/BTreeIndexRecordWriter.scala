@@ -218,8 +218,6 @@ private[index] case class BTreeIndexRecordWriter(
     var i = 0
     uniqueKeys.grouped(rowIdListSizePerSection).map { partedUniqueKeys =>
       val bytes = serializeRowIdList(partedUniqueKeys)
-      // println(
-      // "write: part: " + i + " length: " + bytes.length + " md5: " + IndexUtils.hash(bytes))
       i += 1
       fileWriter.writeRowIdList(bytes)
       bytes.length
