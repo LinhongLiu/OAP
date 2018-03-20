@@ -69,7 +69,7 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
 
   private var fin: FSDataInputStream = _
 
-  private var decompressor: BytesDecompressor = _
+  @transient private var decompressor: BytesDecompressor = _
 
   @transient private var bmRowIdIterator: Iterator[Integer] = _
   private var empty: Boolean = _

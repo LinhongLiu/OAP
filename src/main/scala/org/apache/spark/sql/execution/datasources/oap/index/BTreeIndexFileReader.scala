@@ -64,7 +64,7 @@ private[oap] case class BTreeIndexFileReader(
     (footerSize, rowIdListSize, codec)
   }
 
-  private val decompressor = new CodecFactory(configuration).getDecompressor(codec)
+  @transient private val decompressor = new CodecFactory(configuration).getDecompressor(codec)
 
   private def footerIndex = fileLength - META_SIZE - footerLength
   private def rowIdListIndex = footerIndex - rowIdListLength

@@ -46,9 +46,8 @@ private[index] case class BTreeIndexRecordWriter(
   extends RecordWriter[Void, InternalRow] {
 
   @transient private lazy val genericProjector = FromUnsafeProjection(keySchema)
-  private lazy val nnkw = new NonNullKeyWriter(keySchema)
-
-  private val compressor = new CodecFactory(configuration).getCompressor(codec)
+  @transient private lazy val nnkw = new NonNullKeyWriter(keySchema)
+  @transient private val compressor = new CodecFactory(configuration).getCompressor(codec)
 
   private val rowIdListSizePerSection =
     configuration.getInt(OapConf.OAP_BTREE_ROW_LIST_PART_SIZE.key, 1024 * 1024)

@@ -83,6 +83,7 @@ private[oap] class BitmapIndexRecordWriter(
 
   @transient private lazy val genericProjector = FromUnsafeProjection(keySchema)
   @transient private lazy val nnkw = new NonNullKeyWriter(keySchema)
+  @transient private val compressor = new CodecFactory(configuration).getCompressor(codec)
 
   private val rowMapBitmap = new mutable.HashMap[InternalRow, RoaringBitmap]()
   private var recordCount: Int = 0
@@ -103,8 +104,6 @@ private[oap] class BitmapIndexRecordWriter(
   private var bmEntryListTotalSize: Int = _
   private var bmOffsetListTotalSize: Int = _
   private var bmIndexEnd: Int = _
-
-  private val compressor = new CodecFactory(configuration).getCompressor(codec)
 
   override def write(key: Void, value: InternalRow): Unit = {
     val v = genericProjector(value).copy()
