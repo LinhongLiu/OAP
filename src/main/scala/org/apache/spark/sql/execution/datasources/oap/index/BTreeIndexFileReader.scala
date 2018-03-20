@@ -18,7 +18,7 @@
 package org.apache.spark.sql.execution.datasources.oap.index
 
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.Path
+import org.apache.hadoop.fs.{FSDataInputStream, Path}
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.execution.datasources.OapException
@@ -69,6 +69,15 @@ private[oap] case class BTreeIndexFileReader(
   private def getIntFromBuffer(buffer: Array[Byte], offset: Int) =
     Platform.getInt(buffer, Platform.BYTE_ARRAY_OFFSET + offset)
 
+  private def readData(in: FSDataInputStream, position: Long, length: Int): Array[Byte] = {
+
+    assert(length <= Int.MaxValue, "Try to read too large index data")
+
+    val bytes = new Array[Byte](length)
+    in.readFully(position, bytes)
+    IndexUtils.decompressIndexData(codecFactory, bytes)
+  }
+
   def checkVersionNum(versionNum: Int): Unit = {
     if (IndexFile.VERSION_NUM != versionNum) {
       throw new OapException("Btree Index File version is not compatible!")
@@ -76,34 +85,14 @@ private[oap] case class BTreeIndexFileReader(
   }
 
   def readFooter(): FiberCache =
-    MemoryManager.putToIndexFiberCache(reader, footerIndex, footerLength, codecFactory)
-
-  def readRowIdList(partIdx: Int): FiberCache = {
-    val partSize = rowIdListSizePerSection.toLong * IndexUtils.INT_SIZE
-    val readLength = if (partIdx * partSize + partSize > rowIdListLength) {
-      rowIdListLength % partSize
-    } else {
-      partSize
-    }
-    assert(readLength <= Int.MaxValue, "Size of each row id list partition is too large!")
-    MemoryManager.putToIndexFiberCache(reader, rowIdListIndex + partIdx * partSize,
-      readLength.toInt)
-  }
+    MemoryManager.putToIndexFiberCache(readData(reader, footerIndex, footerLength))
 
   def readRowIdListPart(i: Int, offset: Int, size: Int): FiberCache = {
-    val bytes = new Array[Byte](size)
-    reader.readFully(rowIdListIndex + offset, bytes)
-    // println("read: part: " + i + " offset: " +
-    // (rowIdListIndex + offset) + " length: " + bytes.length + " md5: " + IndexUtils.hash(bytes))
-    MemoryManager.putToIndexFiberCache(reader, rowIdListIndex + offset, size, codecFactory)
+    MemoryManager.putToIndexFiberCache(readData(reader, rowIdListIndex + offset, size))
   }
 
-  @deprecated("no need to read the whole row id list", "v0.3")
-  def readRowIdList(): FiberCache =
-    MemoryManager.putToIndexFiberCache(reader, rowIdListIndex, rowIdListLength.toInt)
-
   def readNode(offset: Int, size: Int): FiberCache =
-    MemoryManager.putToIndexFiberCache(reader, nodesIndex + offset, size, codecFactory)
+    MemoryManager.putToIndexFiberCache(readData(reader, nodesIndex + offset, size))
 
   def close(): Unit = try {
     reader.close()

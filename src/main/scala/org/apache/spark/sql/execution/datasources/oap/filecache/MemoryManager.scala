@@ -234,29 +234,7 @@ private[oap] object MemoryManager extends Logging {
     logDebug(s"freed ${memoryBlock.size()} memory, used: $memoryUsed")
   }
 
-  // Used by IndexFile
-  // TODO: putToFiberCache(in: Stream, position: Long, length: Int, type: FiberType)
-  def putToIndexFiberCache(in: FSDataInputStream, position: Long, length: Int): IndexFiberCache = {
-    val bytes = new Array[Byte](length)
-    in.readFully(position, bytes)
-    val memoryBlock = allocate(bytes.length)
-    Platform.copyMemory(
-      bytes,
-      Platform.BYTE_ARRAY_OFFSET,
-      memoryBlock.getBaseObject,
-      memoryBlock.getBaseOffset,
-      bytes.length)
-    IndexFiberCache(memoryBlock)
-  }
-
-  def putToIndexFiberCache(
-      in: FSDataInputStream,
-      position: Long,
-      length: Int,
-      codecFactory: CodecFactory): IndexFiberCache = {
-    val compressedBytes = new Array[Byte](length)
-    in.readFully(position, compressedBytes)
-    val bytes = IndexUtils.decompressIndexData(codecFactory, compressedBytes)
+  def putToIndexFiberCache(bytes: Array[Byte]): IndexFiberCache = {
     val memoryBlock = allocate(bytes.length)
     Platform.copyMemory(
       bytes,

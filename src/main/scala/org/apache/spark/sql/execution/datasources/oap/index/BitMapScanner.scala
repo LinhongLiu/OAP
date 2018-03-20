@@ -77,12 +77,21 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
 
   override def next(): Int = bmRowIdIterator.next()
 
+  private def readData(in: FSDataInputStream, position: Long, length: Int): Array[Byte] = {
+
+    assert(length <= Int.MaxValue, "Try to read too large index data")
+
+    val bytes = new Array[Byte](length)
+    in.readFully(position, bytes)
+    IndexUtils.decompressIndexData(codecFactory, bytes)
+  }
+
   private def loadBmFooter(fin: FSDataInputStream, bmFooterOffset: Int): FiberCache = {
-    MemoryManager.putToIndexFiberCache(fin, bmFooterOffset, BITMAP_FOOTER_SIZE)
+    MemoryManager.putToIndexFiberCache(readData(fin, bmFooterOffset, BITMAP_FOOTER_SIZE))
   }
 
   private def loadBmStatsContent(fin: FSDataInputStream, offset: Long, size: Long): FiberCache = {
-    MemoryManager.putToIndexFiberCache(fin, offset, size.toInt, codecFactory)
+    MemoryManager.putToIndexFiberCache(readData(fin, offset, size.toInt))
   }
 
   private def cacheBitmapFooterSegment(idxPath: Path, conf: Configuration): Unit = {
@@ -154,7 +163,7 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
     // TODO: seems not supported yet on my local dev machine(hadoop is 2.7.3).
     // fin.setReadahead(bmUniqueKeyListTotalSize)
     MemoryManager.putToIndexFiberCache(
-      fin, bmUniqueKeyListOffset, bmUniqueKeyListTotalSize, codecFactory)
+      readData(fin, bmUniqueKeyListOffset, bmUniqueKeyListTotalSize))
   }
 
   private def readBmUniqueKeyListFromCache(data: FiberCache): IndexedSeq[InternalRow] = {
@@ -169,7 +178,7 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
 
   private def loadBmEntryList(
       fin: FSDataInputStream, bmEntryListOffset: Int, bmEntryListTotalSize: Int): FiberCache = {
-    MemoryManager.putToIndexFiberCache(fin, bmEntryListOffset, bmEntryListTotalSize, codecFactory)
+    MemoryManager.putToIndexFiberCache(readData(fin, bmEntryListOffset, bmEntryListTotalSize))
   }
 
   private def loadBmOffsetList(
@@ -177,12 +186,12 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
       bmOffsetListOffset: Int,
       bmOffsetListTotalSize: Int): FiberCache = {
     MemoryManager.putToIndexFiberCache(
-      fin, bmOffsetListOffset, bmOffsetListTotalSize, codecFactory)
+      readData(fin, bmOffsetListOffset, bmOffsetListTotalSize))
   }
 
   private def loadBmNullList(
       fin: FSDataInputStream, bmNullEntryOffset: Int, bmNullEntrySize: Int): FiberCache = {
-    MemoryManager.putToIndexFiberCache(fin, bmNullEntryOffset, bmNullEntrySize, codecFactory)
+    MemoryManager.putToIndexFiberCache(readData(fin, bmNullEntryOffset, bmNullEntrySize))
   }
 
   private def checkVersionNum(versionNum: Int, fin: FSDataInputStream): Unit = {
