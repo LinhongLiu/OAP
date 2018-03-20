@@ -24,6 +24,7 @@ import scala.collection.mutable
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FSDataInputStream, Path}
+import org.apache.parquet.format.CompressionCodec
 import org.roaringbitmap.FastAggregation
 import org.roaringbitmap.RoaringBitmap
 
@@ -32,7 +33,7 @@ import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
 import org.apache.spark.sql.execution.datasources.OapException
 import org.apache.spark.sql.execution.datasources.oap._
 import org.apache.spark.sql.execution.datasources.oap.filecache._
-import org.apache.spark.sql.execution.datasources.oap.io.{CodecFactory, IndexFile}
+import org.apache.spark.sql.execution.datasources.oap.io.{BytesDecompressor, CodecFactory, IndexFile}
 import org.apache.spark.sql.execution.datasources.oap.statistics.StatisticsManager
 import org.apache.spark.sql.execution.datasources.oap.utils.NonNullKeyReader
 import org.apache.spark.util.ShutdownHookManager
@@ -46,7 +47,7 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
   @transient
   protected lazy val nnkr: NonNullKeyReader = new NonNullKeyReader(keySchema)
 
-  private val BITMAP_FOOTER_SIZE = 4 + 5 * 8
+  private val BITMAP_FOOTER_SIZE = 6 * 8
 
   private var bmUniqueKeyListTotalSize: Int = _
   private var bmUniqueKeyListCount: Int = _
@@ -68,7 +69,7 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
 
   private var fin: FSDataInputStream = _
 
-  private var codecFactory: CodecFactory = _
+  private var decompressor: BytesDecompressor = _
 
   @transient private var bmRowIdIterator: Iterator[Integer] = _
   private var empty: Boolean = _
@@ -83,7 +84,7 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
 
     val bytes = new Array[Byte](length)
     in.readFully(position, bytes)
-    IndexUtils.decompressIndexData(codecFactory, bytes)
+    IndexUtils.decompressIndexData(decompressor, bytes)
   }
 
   private def loadBmFooter(fin: FSDataInputStream, bmFooterOffset: Int): FiberCache = {
@@ -111,13 +112,15 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
     if (bmFooterCache == null) {
       bmFooterCache = WrappedFiberCache(FiberCacheManager.get(bmFooterFiber, conf))
     }
+    if (decompressor == null) {
+      val codecValue = bmFooterCache.fc.getInt(IndexUtils.INT_SIZE * 7)
+      val codec = CompressionCodec.findByValue(codecValue)
+      decompressor = new CodecFactory(conf).getDecompressor(codec)
+    }
   }
 
   override protected def analyzeStatistics(indexPath: Path, conf: Configuration): Double = {
     var bmStatsContentCache: WrappedFiberCache = null
-    if (codecFactory == null) {
-      codecFactory = new CodecFactory(conf)
-    }
     try {
       val fs = indexPath.getFileSystem(conf)
       fin = fs.open(indexPath)
@@ -374,10 +377,6 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
     assert(keySchema.fields.length == 1)
     this.ordering = GenerateOrdering.create(keySchema)
     val idxPath = IndexUtils.indexFileFromDataFile(dataPath, meta.name, meta.time)
-
-    if (codecFactory == null) {
-      codecFactory = new CodecFactory(conf)
-    }
 
     cacheBitmapAllSegments(idxPath, conf)
     try {

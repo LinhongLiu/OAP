@@ -19,13 +19,11 @@ package org.apache.spark.sql.execution.datasources.oap.index
 
 import java.io.OutputStream
 
-import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-import org.apache.parquet.format.CompressionCodec
 
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.oap.OapFileFormat
-import org.apache.spark.sql.execution.datasources.oap.io.{CodecFactory, IndexFile}
+import org.apache.spark.sql.execution.datasources.oap.io.{BytesCompressor, BytesDecompressor, CodecFactory, IndexFile}
 import org.apache.spark.unsafe.Platform
 
 /**
@@ -196,25 +194,16 @@ private[oap] object IndexUtils {
     }
   }
 
-  def compressIndexData(
-      configuration: Configuration,
-      codecFactory: CodecFactory,
-      bytes: Array[Byte]): Array[Byte] = {
-    val codec = CompressionCodec.valueOf(
-        configuration.get(OapFileFormat.COMPRESSION, OapFileFormat.DEFAULT_COMPRESSION))
-    val compressed = codecFactory.getCompressor(codec).compress(bytes)
-    "CODEC".getBytes("UTF-8") ++ toBytes(codec.getValue) ++ toBytes(bytes.length) ++ compressed
+  private val CODEC_MAGIC: Array[Byte] = "CODEC".getBytes("UTF-8")
+
+  def compressIndexData(compressor: BytesCompressor, bytes: Array[Byte]): Array[Byte] = {
+    CODEC_MAGIC ++ toBytes(bytes.length) ++ compressor.compress(bytes)
   }
 
-  def decompressIndexData(codecFactory: CodecFactory, bytes: Array[Byte]): Array[Byte] = {
-    val magic: Array[Byte] = "CODEC".getBytes("UTF-8")
-    if (magic.sameElements(bytes.slice(0, magic.length))) {
-      val codec = Platform.getInt(bytes, Platform.BYTE_ARRAY_OFFSET + 5)
-      val c = CompressionCodec.findByValue(codec)
-      val decompressor = codecFactory.getDecompressor(c)
-      val length = Platform.getInt(bytes, Platform.BYTE_ARRAY_OFFSET + 9)
-      val dec = decompressor.decompress(bytes.slice(13, bytes.length), length)
-      dec
+  def decompressIndexData(decompressor: BytesDecompressor, bytes: Array[Byte]): Array[Byte] = {
+    if (CODEC_MAGIC.sameElements(bytes.slice(0, CODEC_MAGIC.length))) {
+      val length = Platform.getInt(bytes, Platform.BYTE_ARRAY_OFFSET + CODEC_MAGIC.length)
+      decompressor.decompress(bytes.slice(CODEC_MAGIC.length + INT_SIZE, bytes.length), length)
     } else {
       bytes
     }

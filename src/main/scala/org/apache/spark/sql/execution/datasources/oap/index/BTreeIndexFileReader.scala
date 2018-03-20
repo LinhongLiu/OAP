@@ -19,6 +19,7 @@ package org.apache.spark.sql.execution.datasources.oap.index
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FSDataInputStream, Path}
+import org.apache.parquet.format.CompressionCodec
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.execution.datasources.OapException
@@ -35,8 +36,9 @@ private[oap] case class BTreeIndexFileReader(
   private val VERSION_SIZE = IndexFile.VERSION_LENGTH
   private val FOOTER_LENGTH_SIZE = IndexUtils.INT_SIZE
   private val ROW_ID_LIST_LENGTH_SIZE = IndexUtils.LONG_SIZE
+  private val CODEC_SIZE = IndexUtils.INT_SIZE
+  private val META_SIZE = FOOTER_LENGTH_SIZE + ROW_ID_LIST_LENGTH_SIZE + CODEC_SIZE
 
-  private val codecFactory = new CodecFactory(configuration)
   // Section ID for fiber cache reading.
   val footerSectionId: Int = 0
   val rowIdListSectionId: Int = 1
@@ -50,16 +52,21 @@ private[oap] case class BTreeIndexFileReader(
     (fs.open(file), fs.getFileStatus(file).getLen)
   }
 
-  private val (footerLength, rowIdListLength) = {
-    val sectionLengthIndex = fileLength - FOOTER_LENGTH_SIZE - ROW_ID_LIST_LENGTH_SIZE
-    val sectionLengthBuffer = new Array[Byte](FOOTER_LENGTH_SIZE + ROW_ID_LIST_LENGTH_SIZE)
+  private val (footerLength, rowIdListLength, codec) = {
+    val sectionLengthIndex = fileLength - META_SIZE
+    val sectionLengthBuffer = new Array[Byte](META_SIZE)
     reader.readFully(sectionLengthIndex, sectionLengthBuffer)
     val rowIdListSize = getLongFromBuffer(sectionLengthBuffer, 0)
     val footerSize = getIntFromBuffer(sectionLengthBuffer, ROW_ID_LIST_LENGTH_SIZE)
-    (footerSize, rowIdListSize)
+    val codecValue =
+      getIntFromBuffer(sectionLengthBuffer, ROW_ID_LIST_LENGTH_SIZE + FOOTER_LENGTH_SIZE)
+    val codec = CompressionCodec.findByValue(codecValue)
+    (footerSize, rowIdListSize, codec)
   }
 
-  private def footerIndex = fileLength - FOOTER_LENGTH_SIZE - ROW_ID_LIST_LENGTH_SIZE - footerLength
+  private val decompressor = new CodecFactory(configuration).getDecompressor(codec)
+
+  private def footerIndex = fileLength - META_SIZE - footerLength
   private def rowIdListIndex = footerIndex - rowIdListLength
   private def nodesIndex = VERSION_SIZE
 
@@ -75,7 +82,7 @@ private[oap] case class BTreeIndexFileReader(
 
     val bytes = new Array[Byte](length)
     in.readFully(position, bytes)
-    IndexUtils.decompressIndexData(codecFactory, bytes)
+    IndexUtils.decompressIndexData(decompressor, bytes)
   }
 
   def checkVersionNum(versionNum: Int): Unit = {

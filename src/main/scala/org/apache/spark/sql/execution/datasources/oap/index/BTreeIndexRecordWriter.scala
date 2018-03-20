@@ -25,6 +25,7 @@ import scala.collection.JavaConverters._
 import com.google.common.collect.ArrayListMultimap
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.mapreduce.{RecordWriter, TaskAttemptContext}
+import org.apache.parquet.format.CompressionCodec
 
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
@@ -40,12 +41,14 @@ import org.apache.spark.sql.types._
 private[index] case class BTreeIndexRecordWriter(
     configuration: Configuration,
     fileWriter: BTreeIndexFileWriter,
-    keySchema: StructType) extends RecordWriter[Void, InternalRow] {
+    keySchema: StructType,
+    codec: CompressionCodec = CompressionCodec.UNCOMPRESSED)
+  extends RecordWriter[Void, InternalRow] {
 
   @transient private lazy val genericProjector = FromUnsafeProjection(keySchema)
   private lazy val nnkw = new NonNullKeyWriter(keySchema)
 
-  private val codecFactory = new CodecFactory(configuration)
+  private val compressor = new CodecFactory(configuration).getCompressor(codec)
 
   private val rowIdListSizePerSection =
     configuration.getInt(OapConf.OAP_BTREE_ROW_LIST_PART_SIZE.key, 1024 * 1024)
@@ -197,10 +200,7 @@ private[index] case class BTreeIndexRecordWriter(
       nnkw.writeKey(keyBuffer, key)
       rowPos += multiHashMap.get(key).size()
     }
-    IndexUtils.compressIndexData(
-      configuration,
-      codecFactory,
-      buffer.toByteArray ++ keyBuffer.toByteArray)
+    IndexUtils.compressIndexData(compressor, buffer.toByteArray ++ keyBuffer.toByteArray)
   }
 
   // TODO: BTreeNode can be re-write. It doesn't carry any values.
@@ -230,7 +230,7 @@ private[index] case class BTreeIndexRecordWriter(
         IndexUtils.toBytes(rowId)
       }
     }.toArray
-    IndexUtils.compressIndexData(configuration, codecFactory, bytes)
+    IndexUtils.compressIndexData(compressor, bytes)
   }
 
   /**
@@ -316,8 +316,7 @@ private[index] case class BTreeIndexRecordWriter(
     statisticsManager.write(statsBuffer)
     IndexUtils.writeInt(buffer, statsBuffer.size)
     IndexUtils.compressIndexData(
-      configuration,
-      codecFactory,
+      compressor,
       buffer.toByteArray ++ statsBuffer.toByteArray ++ keyBuffer.toByteArray
     )
   }

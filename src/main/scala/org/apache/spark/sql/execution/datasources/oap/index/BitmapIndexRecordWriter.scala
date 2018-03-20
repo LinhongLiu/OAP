@@ -24,6 +24,7 @@ import scala.collection.mutable
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.mapreduce.{RecordWriter, TaskAttemptContext}
+import org.apache.parquet.format.CompressionCodec
 import org.roaringbitmap.RoaringBitmap
 
 import org.apache.spark.sql.catalyst.InternalRow
@@ -77,7 +78,8 @@ private[oap] object BitmapIndexSectionId {
 private[oap] class BitmapIndexRecordWriter(
     configuration: Configuration,
     writer: OutputStream,
-    keySchema: StructType) extends RecordWriter[Void, InternalRow] {
+    keySchema: StructType,
+    codec: CompressionCodec) extends RecordWriter[Void, InternalRow] {
 
   @transient private lazy val genericProjector = FromUnsafeProjection(keySchema)
   @transient private lazy val nnkw = new NonNullKeyWriter(keySchema)
@@ -102,7 +104,7 @@ private[oap] class BitmapIndexRecordWriter(
   private var bmOffsetListTotalSize: Int = _
   private var bmIndexEnd: Int = _
 
-  private val codecFactory = new CodecFactory(configuration)
+  private val compressor = new CodecFactory(configuration).getCompressor(codec)
 
   override def write(key: Void, value: InternalRow): Unit = {
     val v = genericProjector(value).copy()
@@ -134,7 +136,7 @@ private[oap] class BitmapIndexRecordWriter(
     bmUniqueKeyList = uniqueKeyList.sorted(ordering)
     val bos = new ByteArrayOutputStream()
     bmUniqueKeyList.foreach(key => nnkw.writeKey(bos, key))
-    val compressedBytes = IndexUtils.compressIndexData(configuration, codecFactory, bos.toByteArray)
+    val compressedBytes = IndexUtils.compressIndexData(compressor, bos.toByteArray)
     bmUniqueKeyListTotalSize = compressedBytes.length
     bmUniqueKeyListCount = bmUniqueKeyList.size
     writer.write(compressedBytes)
@@ -160,7 +162,7 @@ private[oap] class BitmapIndexRecordWriter(
       dos.flush()
       totalBitmapSize += bm.serializedSizeInBytes()
     })
-    val compressedBytes = IndexUtils.compressIndexData(configuration, codecFactory, bos.toByteArray)
+    val compressedBytes = IndexUtils.compressIndexData(compressor, bos.toByteArray)
     writer.write(compressedBytes)
     dos.close()
     bos.close()
@@ -176,7 +178,7 @@ private[oap] class BitmapIndexRecordWriter(
       bm.serialize(dos)
       dos.flush()
       val compressedBytes =
-        IndexUtils.compressIndexData(configuration, codecFactory, bos.toByteArray)
+        IndexUtils.compressIndexData(compressor, bos.toByteArray)
       bmNullEntrySize = compressedBytes.length
       writer.write(compressedBytes)
       dos.close()
@@ -189,7 +191,7 @@ private[oap] class BitmapIndexRecordWriter(
     val bos = new ByteArrayOutputStream()
     val dos = new DataOutputStream(bos)
     bmOffsetListBuffer.foreach(offsetIdx => IndexUtils.writeInt(dos, offsetIdx))
-    val compressedBytes = IndexUtils.compressIndexData(configuration, codecFactory, bos.toByteArray)
+    val compressedBytes = IndexUtils.compressIndexData(compressor, bos.toByteArray)
     bmOffsetListTotalSize = compressedBytes.length
     writer.write(compressedBytes)
   }
@@ -202,8 +204,8 @@ private[oap] class BitmapIndexRecordWriter(
     bmIndexEnd = bmEntryListOffset + bmEntryListTotalSize + bmNullEntrySize + bmOffsetListTotalSize
     // The index end is also the starting position of statistics part.
     statisticsWriteManager.write(dos)
-    val compressedBytes = IndexUtils.compressIndexData(configuration, codecFactory, bos.toByteArray)
-    writer.write(compressedBytes)
+    val compressedStats = IndexUtils.compressIndexData(compressor, bos.toByteArray)
+    writer.write(compressedStats)
     IndexUtils.writeInt(writer, IndexFile.VERSION_NUM)
     IndexUtils.writeInt(writer, bmUniqueKeyListTotalSize)
     IndexUtils.writeInt(writer, bmUniqueKeyListCount)
@@ -211,8 +213,9 @@ private[oap] class BitmapIndexRecordWriter(
     IndexUtils.writeInt(writer, bmOffsetListTotalSize)
     IndexUtils.writeInt(writer, bmNullEntryOffset)
     IndexUtils.writeInt(writer, bmNullEntrySize)
+    IndexUtils.writeInt(writer, codec.getValue)
     IndexUtils.writeLong(writer, bmIndexEnd)
-    IndexUtils.writeLong(writer, compressedBytes.length.toLong)
+    IndexUtils.writeLong(writer, compressedStats.length.toLong)
   }
 
   private def flushToFile(): Unit = {
