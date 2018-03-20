@@ -195,6 +195,7 @@ private[oap] object IndexUtils {
       (m, found)
     }
   }
+
   def compressIndexData(
       configuration: Configuration,
       codecFactory: CodecFactory,

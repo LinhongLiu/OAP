@@ -168,7 +168,7 @@ private[oap] class BitmapIndexRecordWriter(
 
     // Write entry for null value rows if exists
     if (bmNullKeyList.nonEmpty) {
-      bmNullEntryOffset = bmEntryListOffset + totalBitmapSize
+      bmNullEntryOffset = bmEntryListOffset + bmEntryListTotalSize
       val bm = rowMapBitmap(bmNullKeyList.head)
       bm.runOptimize()
       val bos = new ByteArrayOutputStream()
