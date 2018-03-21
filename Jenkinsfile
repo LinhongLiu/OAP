@@ -6,9 +6,9 @@ pipeline {
         echo 'hello world'
       }
     }
-    stage('') {
+    stage('error') {
       steps {
-        perfReport 'aaa'
+        perfReport(sourceDataFiles: 'aaa', configType: 'Xxvdfa', errorFailedThreshold: 11, errorUnstableResponseTimeThreshold: '1', ignoreFailedBuilds: true, modeOfThreshold: true, modePerformancePerTestCase: true, relativeFailedThresholdNegative: 2, relativeFailedThresholdPositive: -2, relativeUnstableThresholdNegative: 4)
       }
     }
   }
