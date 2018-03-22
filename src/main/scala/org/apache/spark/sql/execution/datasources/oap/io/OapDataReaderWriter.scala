@@ -193,6 +193,8 @@ private[oap] class OapDataReader(
 
   var selectedRows: Option[Long] = None
 
+  def totalRows(): Long = 0
+
   def initialize(
       conf: Configuration,
       options: Map[String, String] = Map.empty): OapIterator[InternalRow] = {
