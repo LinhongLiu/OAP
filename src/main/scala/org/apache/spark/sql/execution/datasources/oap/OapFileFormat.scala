@@ -19,7 +19,6 @@ package org.apache.spark.sql.execution.datasources.oap
 
 import java.net.URI
 
-import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.hadoop.conf.Configuration
@@ -284,20 +283,22 @@ private[sql] class OapFileFormat extends FileFormat
           assert(file.partitionValues.numFields == partitionSchema.size)
           val conf = broadcastedHadoopConf.value.value
 
-          var skip = false
-          if (m.dataReaderClassName == OapFileFormat.OAP_DATA_FILE_CLASSNAME) {
-            val dataFile = DataFile(file.filePath, m.schema, m.dataReaderClassName, conf)
-            val dataFileHandle: OapDataFileHandle = DataFileHandleCacheManager(dataFile)
-            if (filters.exists(filter =>
-              canSkipFile(dataFileHandle.columnsMeta.map(_.statistics), filter, m.schema))) {
-              val totalRows = dataFileHandle.totalRowCount()
-              selectedRows.add(0)
-              skippedRows.add(totalRows)
-              skip = true
+          def canSkipByDataFileStatistics: Boolean = {
+            if (m.dataReaderClassName == OapFileFormat.OAP_DATA_FILE_CLASSNAME) {
+              val dataFile = DataFile(file.filePath, m.schema, m.dataReaderClassName, conf)
+              val dataFileHandle: OapDataFileHandle = DataFileHandleCacheManager(dataFile)
+              if (filters.exists(filter =>
+                canSkipFile(dataFileHandle.columnsMeta.map(_.statistics), filter, m.schema))) {
+                val totalRows = dataFileHandle.totalRowCount()
+                selectedRows.add(0)
+                skippedRows.add(totalRows)
+                return true
+              }
             }
+            false
           }
 
-          if (skip) {
+          if (canSkipByDataFileStatistics) {
             Iterator.empty
           } else {
             OapIndexInfo.partitionOapIndex.put(file.filePath, false)
