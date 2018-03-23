@@ -39,7 +39,9 @@ private[oap] object IndexScanner {
 }
 
 private[oap] abstract class IndexScanner(idxMeta: IndexMeta)
-  extends Iterator[Int] with Serializable with Logging{
+  extends Iterator[Int] with Serializable with Logging {
+
+  def totalRows(): Long
 
   // TODO Currently, only B+ tree supports indexs, so this flag is toggled only in
   // BPlusTreeScanner we can add other index-aware stats for other type of index later
@@ -174,6 +176,7 @@ private[oap] object DUMMY_SCANNER extends IndexScanner(null) {
   override def hasNext: Boolean = false
   override def next(): Int = throw new NoSuchElementException("end of iterating.")
   override def meta: IndexMeta = throw new NotImplementedError()
+  override def totalRows(): Long = 0
 }
 
 // The building of Search Scanner according to the filter and indices,
@@ -366,6 +369,8 @@ private[oap] class IndexScanners(val scanners: Seq[IndexScanner])
   override def next(): Int = backendIter.next
 
   override def toString(): String = scanners.map(_.toString()).mkString("|")
+
+  def totalRows(): Long = scanners.head.totalRows()
 
 }
 

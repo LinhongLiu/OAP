@@ -46,7 +46,7 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
   @transient
   protected lazy val nnkr: NonNullKeyReader = new NonNullKeyReader(keySchema)
 
-  private val BITMAP_FOOTER_SIZE = 4 + 5 * 8
+  private val BITMAP_FOOTER_SIZE = 6 * 8
 
   private var bmUniqueKeyListTotalSize: Int = _
   private var bmUniqueKeyListCount: Int = _
@@ -119,6 +119,8 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
         () => loadBmStatsContent(fin, statsOffset, statsSize),
         indexPath.toString, BitmapIndexSectionId.statsContentSection, 0)
       bmStatsContentCache = WrappedFiberCache(FiberCacheManager.get(bmStatsContentFiber, conf))
+
+      _totalRows = bmFooterCache.fc.getInt(IndexUtils.INT_SIZE * 7)
 
       val stats = StatisticsManager.read(bmStatsContentCache.fc, 0, keySchema)
       StatisticsManager.analyse(stats, intervalArray, conf)
@@ -380,6 +382,10 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
     bmUniqueKeyListTotalSize = 0
     bmUniqueKeyListCount = 0
   }
+
+  // Set by analyzeStatistics()
+  private var _totalRows: Long = 0
+  override def totalRows(): Long = _totalRows
 
   override def toString: String = "BitMapScanner"
 }

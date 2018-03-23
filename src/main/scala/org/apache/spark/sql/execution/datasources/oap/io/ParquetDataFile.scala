@@ -122,4 +122,12 @@ private[oap] case class ParquetDataFile
   }
 
   override def getDictionary(fiberId: Int, conf: Configuration): Dictionary = null
+
+  override def totalRows(): Long = {
+    import scala.collection.JavaConverters._
+    val meta: ParquetDataFileHandle = DataFileHandleCacheManager(this)
+    meta.footer.getBlocks.asScala.foldLeft(0L) {
+      (sum, block) => sum + block.getRowCount
+    }
+  }
 }

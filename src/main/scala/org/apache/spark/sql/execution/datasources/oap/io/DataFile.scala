@@ -41,6 +41,8 @@ abstract class DataFile {
   def iterator(
       conf: Configuration, requiredIds: Array[Int], rowIds: Array[Int]): OapIterator[InternalRow]
   def getDictionary(fiberId: Int, conf: Configuration): Dictionary
+
+  def totalRows(): Long
 }
 
 private[oap] class OapIterator[T](inner: Iterator[T]) extends Iterator[T] with AutoCloseable {
