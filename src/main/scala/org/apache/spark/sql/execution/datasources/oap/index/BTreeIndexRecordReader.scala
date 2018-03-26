@@ -22,11 +22,14 @@ import scala.collection.mutable.ArrayBuffer
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 
+import org.apache.spark.sql.execution.datasources.oap.statistics.StatsAnalysisResult
 import org.apache.spark.sql.types._
 
 trait BTreeIndexRecordReader extends Iterator[Int] {
   def initialize(path: Path, intervalArray: ArrayBuffer[RangeInterval]): Unit
-  def analyzeStatistics(keySchema: StructType, intervalArray: ArrayBuffer[RangeInterval]): Double
+  def analyzeStatistics(
+      keySchema: StructType,
+      intervalArray: ArrayBuffer[RangeInterval]): StatsAnalysisResult
   def close(): Unit
 }
 

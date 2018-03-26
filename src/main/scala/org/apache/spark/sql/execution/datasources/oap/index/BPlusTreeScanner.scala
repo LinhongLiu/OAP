@@ -21,6 +21,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 
 import org.apache.spark.sql.execution.datasources.oap._
+import org.apache.spark.sql.execution.datasources.oap.statistics.StatsAnalysisResult
 
 // we scan the index from the smallest to the largest,
 // this will scan the B+ Tree (index) leaf node.
@@ -42,7 +43,9 @@ private[oap] class BPlusTreeScanner(idxMeta: IndexMeta) extends IndexScanner(idx
     this
   }
 
-  override protected def analyzeStatistics(indexPath: Path, conf: Configuration): Double = {
+  override protected def analyzeStatistics(
+      indexPath: Path,
+      conf: Configuration): StatsAnalysisResult = {
     var recordReader = BTreeIndexRecordReader(conf, keySchema, indexPath)
     try {
       recordReader.analyzeStatistics(keySchema, intervalArray)

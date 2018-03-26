@@ -26,7 +26,7 @@ import org.apache.spark.TaskContext
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.codegen.{BaseOrdering, GenerateOrdering}
 import org.apache.spark.sql.execution.datasources.oap.filecache.{BTreeFiber, FiberCache, FiberCacheManager, WrappedFiberCache}
-import org.apache.spark.sql.execution.datasources.oap.statistics.StatisticsManager
+import org.apache.spark.sql.execution.datasources.oap.statistics.{StatisticsManager, StatsAnalysisResult}
 import org.apache.spark.sql.execution.datasources.oap.utils.NonNullKeyReader
 import org.apache.spark.sql.types._
 import org.apache.spark.util.CompletionIterator
@@ -51,7 +51,8 @@ private[index] case class BTreeIndexRecordReaderV1(
   def getFooterFiber: FiberCache = footerCache.fc
 
   def analyzeStatistics(
-      keySchema: StructType, intervalArray: ArrayBuffer[RangeInterval]): Double = {
+      keySchema: StructType,
+      intervalArray: ArrayBuffer[RangeInterval]): StatsAnalysisResult = {
     if (footer == null) {
       footerFiber = BTreeFiber(
         () => reader.readFooter(), reader.file.toString, reader.footerSectionId, 0)
