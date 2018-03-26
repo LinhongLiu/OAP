@@ -192,6 +192,9 @@ private[index] case class BTreeIndexRecordReader(
     }
   }
 
+  def totalRows(): Long =
+    (0 until footer.getNodesCount).map(footer.getRowCountOfNode).sum
+
   def close(): Unit = {
     if (reader != null) {
       reader.close()

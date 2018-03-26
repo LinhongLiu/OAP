@@ -99,6 +99,9 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
     }
     if (bmFooterCache == null) {
       bmFooterCache = WrappedFiberCache(FiberCacheManager.get(bmFooterFiber, conf))
+
+      // Calculate total rows right after footer cache is loaded.
+      _totalRows = bmFooterCache.fc.getInt(IndexUtils.INT_SIZE * 7)
     }
   }
 
@@ -119,8 +122,6 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
         () => loadBmStatsContent(fin, statsOffset, statsSize),
         indexPath.toString, BitmapIndexSectionId.statsContentSection, 0)
       bmStatsContentCache = WrappedFiberCache(FiberCacheManager.get(bmStatsContentFiber, conf))
-
-      _totalRows = bmFooterCache.fc.getInt(IndexUtils.INT_SIZE * 7)
 
       val stats = StatisticsManager.read(bmStatsContentCache.fc, 0, keySchema)
       StatisticsManager.analyse(stats, intervalArray, conf)

@@ -47,6 +47,9 @@ private[oap] class BPlusTreeScanner(idxMeta: IndexMeta) extends IndexScanner(idx
 
     recordReader = BTreeIndexRecordReader(conf, keySchema)
     recordReader.initialize(path, intervalArray)
+
+    // For some case, analyzeStatistics will be skipped, so we have to get totalRows here as well.
+    _totalRows = recordReader.totalRows()
     this
   }
 
