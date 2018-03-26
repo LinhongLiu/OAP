@@ -65,6 +65,10 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
 
   private var bmEntryListFiber: BitmapFiber = _
   private var bmEntryListCache: WrappedFiberCache = _
+  
+  // Set by analyzeStatistics()
+  private var _totalRows: Long = 0
+  override def totalRows(): Long = _totalRows
 
   private var fin: FSDataInputStream = _
 
@@ -383,10 +387,6 @@ private[oap] case class BitMapScanner(idxMeta: IndexMeta) extends IndexScanner(i
     bmUniqueKeyListTotalSize = 0
     bmUniqueKeyListCount = 0
   }
-
-  // Set by analyzeStatistics()
-  private var _totalRows: Long = 0
-  override def totalRows(): Long = _totalRows
 
   override def toString: String = "BitMapScanner"
 }
