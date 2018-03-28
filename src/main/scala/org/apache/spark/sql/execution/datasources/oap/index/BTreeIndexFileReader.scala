@@ -28,21 +28,18 @@ import org.apache.spark.sql.execution.datasources.oap.io.IndexFile
 trait BTreeIndexFileReader extends Logging
 object BTreeIndexFileReader {
 
-  private val MAGIC_V1 = IndexUtils.serializeVersion(1)
-
   def apply(configuration: Configuration, file: Path): BTreeIndexFileReader = {
     val fs = file.getFileSystem(configuration)
     val reader = fs.open(file)
     val fileLen = fs.getFileStatus(file).getLen
 
-    val magic = new Array[Byte](IndexFile.VERSION_LENGTH)
-
-    reader.readFully(0, magic)
-    if (magic.sameElements(MAGIC_V1)) {
+    val version = IndexUtils.readHead(reader, 0)
+    if (version == 1) {
       BTreeIndexFileReaderV1(configuration, reader, file, fileLen)
-    } else {
+    } else if (version == IndexFile.UNKNOWN_VERSION) {
       throw new OapException("not a valid index file")
+    } else {
+      throw new OapException(s"not support index version: $version")
     }
   }
-
 }
