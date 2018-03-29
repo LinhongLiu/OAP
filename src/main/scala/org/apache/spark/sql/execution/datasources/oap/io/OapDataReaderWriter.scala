@@ -268,6 +268,7 @@ private[oap] class OapDataReader(
         val rows = getRowIds(options)
         val iter = fileScanner.iterator(requiredIds, rows)
         val end = if (log.isDebugEnabled) System.currentTimeMillis else 0
+      
         _indexStat = HIT_INDEX
         _rowsReadWhenHitIndex = Some(rows.length)
         logDebug("Construct File Iterator: " + (end - start) + "ms")
