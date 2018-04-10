@@ -24,7 +24,7 @@ import org.apache.spark.sql.internal.oap.OapConf
  * This class represents all the configurable OAP Index properties.
  * For now, only contains index version.
  */
-object OapIndexProperties {
+private[index] object OapIndexProperties {
 
   import IndexVersion.IndexVersion
 

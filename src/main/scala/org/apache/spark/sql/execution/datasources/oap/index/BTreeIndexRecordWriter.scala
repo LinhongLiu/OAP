@@ -38,7 +38,7 @@ import org.apache.spark.sql.execution.datasources.oap.statistics.StatisticsWrite
 import org.apache.spark.sql.execution.datasources.oap.utils.{BTreeNode, BTreeUtils, NonNullKeyWriter}
 import org.apache.spark.sql.types._
 
-private object BTreeIndexRecordWriter {
+private[index] object BTreeIndexRecordWriter {
   def apply(
       configuration: Configuration,
       indexFile: Path,
@@ -52,7 +52,7 @@ private object BTreeIndexRecordWriter {
   }
 }
 
-private case class BTreeIndexRecordWriter(
+private[index] case class BTreeIndexRecordWriter(
     configuration: Configuration,
     fileWriter: BTreeIndexFileWriter,
     keySchema: StructType) extends RecordWriter[Void, InternalRow] {
