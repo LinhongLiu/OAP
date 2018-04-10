@@ -196,4 +196,11 @@ object OapConf {
       .doc("The interval of fiber cache metrics update")
       .longConf
       .createWithDefault(10L)
+
+  val OAP_INDEX_BTREE_WRITER_VERSION =
+    SQLConfigBuilder("spark.sql.oap.index.btree.writer.version")
+      .internal()
+      .doc("The writer version of BTree index")
+      .stringConf
+      .createWithDefault("v1")
 }
