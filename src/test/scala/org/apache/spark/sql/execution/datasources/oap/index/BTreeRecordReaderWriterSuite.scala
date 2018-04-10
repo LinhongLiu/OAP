@@ -51,6 +51,7 @@ class BTreeRecordReaderWriterSuite extends SparkFunSuite {
   private val schema = StructType(StructField("col", IntegerType) :: Nil)
   private val nonNullKeyRecords = (0 until 1000).map(_ => random.nextInt(1000 / 2))
   private val nullKeyRecords = (1 to 5).map(_ => null)
+  /*
   private val fileWriter = {
     val configuration = new Configuration()
     val fileWriter = new TestBTreeIndexFileWriter(configuration)
@@ -100,4 +101,5 @@ class BTreeRecordReaderWriterSuite extends SparkFunSuite {
       assert(uniqueValues(keyOffsetSeq(i + 1) - 1) === footer.getMaxValue(i, schema).getInt(0))
     }
   }
+  */
 }

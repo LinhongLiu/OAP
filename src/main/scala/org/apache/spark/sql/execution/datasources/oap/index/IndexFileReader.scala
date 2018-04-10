@@ -19,7 +19,7 @@ package org.apache.spark.sql.execution.datasources.oap.index
 
 import java.io.InputStream
 
-private[index] trait IndexFileReader {
+private[oap] trait IndexFileReader {
 
   protected def is: InputStream
 
