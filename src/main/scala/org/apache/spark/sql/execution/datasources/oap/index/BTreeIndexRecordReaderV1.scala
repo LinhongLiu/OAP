@@ -24,7 +24,7 @@ import org.apache.hadoop.fs.Path
 
 import org.apache.spark.TaskContext
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.codegen.{BaseOrdering, GenerateOrdering}
+import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
 import org.apache.spark.sql.execution.datasources.oap.filecache._
 import org.apache.spark.sql.execution.datasources.oap.io.IndexFile
 import org.apache.spark.sql.execution.datasources.oap.statistics.{StatisticsManager, StatsAnalysisResult}
@@ -90,7 +90,7 @@ private[index] case class BTreeIndexRecordReaderV1(
   def getFooterFiber: FiberCache = footerCache.fc
 
   private def readFooter() =
-    MemoryManager.toIndexFiberCache(fileReader, meta.footerOffset, meta.footerLength)
+    fileReader.readFiberCache(meta.footerOffset, meta.footerLength)
 
   private def readRowIdList(partIdx: Int) = {
     val partSize = rowIdListSizePerSection.toLong * IndexUtils.INT_SIZE
@@ -100,14 +100,11 @@ private[index] case class BTreeIndexRecordReaderV1(
       partSize
     }
     assert(readLength <= Int.MaxValue, "Size of each row id list partition is too large!")
-    MemoryManager.toIndexFiberCache(
-      fileReader,
-      meta.rowIdListOffset + partIdx * partSize,
-      readLength.toInt)
+    fileReader.readFiberCache(meta.rowIdListOffset + partIdx * partSize, readLength.toInt)
   }
 
   private def readNode(offset: Int, size: Int) =
-    MemoryManager.toIndexFiberCache(fileReader, meta.nodeOffset + offset, size)
+    fileReader.readFiberCache(meta.nodeOffset + offset, size)
 
   def analyzeStatistics(
       keySchema: StructType,

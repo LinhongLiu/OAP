@@ -248,19 +248,6 @@ private[oap] object MemoryManager extends Logging {
     IndexFiberCache(memoryBlock)
   }
 
-  def toIndexFiberCache(in: IndexFileReader, position: Long, length: Int): IndexFiberCache = {
-    val bytes = new Array[Byte](length)
-    in.readFully(position, bytes)
-    val memoryBlock = allocate(bytes.length)
-    Platform.copyMemory(
-      bytes,
-      Platform.BYTE_ARRAY_OFFSET,
-      memoryBlock.getBaseObject,
-      memoryBlock.getBaseOffset,
-      bytes.length)
-    IndexFiberCache(memoryBlock)
-  }
-
   // Used by OapDataFile since we need to parse the raw data in on-heap memory before put it into
   // off-heap memory
   def toDataFiberCache(bytes: Array[Byte]): DataFiberCache = {
