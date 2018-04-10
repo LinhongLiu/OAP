@@ -39,7 +39,7 @@ object BTreeIndexFileReader {
 
     IndexUtils.deserializeVersion(magic) match {
       case Some(version) =>
-        IndexVersion(version) match {
+        IndexVersion.fromId(version) match {
           case IndexVersion.OAP_INDEX_V1 =>
             BTreeIndexFileReaderV1(configuration, reader, file, fileLen)
         }

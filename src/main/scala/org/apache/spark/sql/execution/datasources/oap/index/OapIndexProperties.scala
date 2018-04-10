@@ -39,9 +39,17 @@ object OapIndexProperties {
     // [[BTreeIndexRecordWriter]]
     val OAP_INDEX_V1: IndexVersion = Value(1, "v1")
 
+    // Same to Enumeration.withName. But re-write the Exception message
     def fromString(name: String): IndexVersion = {
       this.values.find(v => v.toString == name).getOrElse {
-        throw new OapException(s"Unsupported index version: $name")
+        throw new OapException(s"Unsupported index version. name: $name")
+      }
+    }
+
+    // Same to Enumeration.apply. But re-write the Exception message
+    def fromId(id: Int): IndexVersion = {
+      this.values.find(v => v.id == id).getOrElse {
+        throw new OapException(s"Unsupported index version. id: $id")
       }
     }
   }
