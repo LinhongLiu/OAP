@@ -23,6 +23,8 @@ private[index] trait IndexFileWriter {
 
   protected def os: OutputStream
 
+  def getName: String
+
   def write(bytes: Array[Byte]): Unit = os.write(bytes)
 
   def writeInt(value: Int): Unit = IndexUtils.writeInt(os, value)

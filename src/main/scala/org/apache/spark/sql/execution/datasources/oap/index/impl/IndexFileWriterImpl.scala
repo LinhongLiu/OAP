@@ -25,7 +25,13 @@ import org.apache.hadoop.fs.Path
 import org.apache.spark.sql.execution.datasources.oap.index.IndexFileWriter
 
 private[index] case class IndexFileWriterImpl(
-    configuration: Configuration, indexPath: Path) extends IndexFileWriter {
+    configuration: Configuration,
+    indexPath: Path) extends IndexFileWriter {
+
   protected override val os: OutputStream =
+
   indexPath.getFileSystem(configuration).create(indexPath, true)
+
+  // Give RecordWriter a chance which file it's writing to.
+  override def getName: String = indexPath.toString
 }
