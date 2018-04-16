@@ -141,16 +141,16 @@ private[oap] case class ParquetDataFile(
     val rows = new BatchColumn()
     val groupIdToRowIds = rowIds.map(optionRowIds => getGroupIdForRowIds(optionRowIds))
     val groupIds = groupIdToRowIds.map(_.keys).getOrElse(0 until meta.footer.getBlocks.size())
-    var fiberCacheGroup: Array[WrappedFiberCache] = null
+    var columns: Array[ColumnValues] = null
 
     val iterator = groupIds.iterator.flatMap { groupId =>
-      fiberCacheGroup = requiredColumnIds.map { id =>
-        WrappedFiberCache(FiberCacheManager.get(DataFiber(this, id, groupId), conf))
+      val fiberCacheGroup = requiredColumnIds.map { id =>
+        FiberCacheManager.get(DataFiber(this, id, groupId), conf)
       }
 
       val rowCount = meta.footer.getBlocks.get(groupId).getRowCount.toInt
       val columns = fiberCacheGroup.zip(requiredColumnIds).map { case (fiberCache, id) =>
-        new ColumnValues(rowCount, schema(id).dataType, fiberCache.fc)
+        new ColumnValues(rowCount, schema(id).dataType, fiberCache)
       }
 
       rows.reset(rowCount, columns)
@@ -162,16 +162,13 @@ private[oap] case class ParquetDataFile(
           rows.toIterator
       }
 
-      CompletionIterator[InternalRow, Iterator[InternalRow]](iter,
-        fiberCacheGroup.zip(requiredColumnIds).foreach {
-          case (fiberCache, id) => fiberCache.release()
-        }
+      CompletionIterator[InternalRow, Iterator[InternalRow]](iter, columns.foreach(_.release())
       )
     }
     new OapIterator[InternalRow](iterator) {
       override def close(): Unit = {
         // To ensure if any exception happens, caches are still released after calling close()
-        if (fiberCacheGroup != null) fiberCacheGroup.foreach(_.release())
+        if (columns != null) columns.foreach(_.release())
       }
     }
   }

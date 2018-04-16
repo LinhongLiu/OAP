@@ -20,13 +20,16 @@ package org.apache.spark.sql.execution.datasources.oap
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
 import org.apache.spark.sql.catalyst.util.{ArrayData, MapData}
-import org.apache.spark.sql.execution.datasources.oap.filecache.FiberCache
+import org.apache.spark.sql.execution.datasources.oap.filecache.{FiberCache, FiberCacheReleasable}
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.{CalendarInterval, UTF8String}
 import org.apache.spark.util.collection.BitSet
 
-class ColumnValues(defaultSize: Int, dataType: DataType, val buffer: FiberCache) {
+class ColumnValues(defaultSize: Int, dataType: DataType, val buffer: FiberCache)
+    extends FiberCacheReleasable {
   require(dataType.isInstanceOf[AtomicType], s"Only atomic type accepted for now, got $dataType.")
+
+  override def fiberCache: FiberCache = buffer
 
   // for any FiberData, the first defaultSize / 8 will be the bitmask
   // TODO what if defaultSize / 8 is not an integer?

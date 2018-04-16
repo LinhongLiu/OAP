@@ -79,7 +79,7 @@ trait FiberCache extends Logging {
         }
       }
     }
-    logWarning(s"Fiber Cache Dispose waiting detected for ${fiber}")
+    logWarning(s"Fiber Cache Dispose waiting detected for $fiber")
     false
   }
 
@@ -148,6 +148,20 @@ trait FiberCache extends Logging {
     copyMemory(offset, dst, Platform.BYTE_ARRAY_OFFSET, dst.length)
 
   def size(): Long = fiberData.size()
+}
+
+trait FiberCacheReleasable {
+  private var released = false
+  def fiberCache: FiberCache
+  def release(): Unit = synchronized {
+    if (!released) {
+      try {
+        fiberCache.release()
+      } finally {
+        released = true
+      }
+    }
+  }
 }
 
 case class WrappedFiberCache(fc: FiberCache) {
