@@ -145,7 +145,7 @@ case class FiberCache(protected val fiberData: MemoryBlock) extends Logging {
 // This is used to make sure FiberCache won't be double released.
 // In some cases, if exception occurs, we need release all in-use FiberCache.
 // To ensure this, every FiberCache reader need extends to do release.
-trait FiberCacheReleasable {
+trait WrappedFiberCache {
   private var released = false
   def fiberCache: FiberCache
   def release(): Unit = synchronized {
