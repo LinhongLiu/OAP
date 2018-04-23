@@ -15,19 +15,23 @@
  * limitations under the License.
  */
 
-package org.apache.spark.sql.execution.datasources
+package org.apache.spark.sql.execution.datasources.oap.index.impl
 
-import org.apache.spark.sql.catalyst.InternalRow
+import java.io.OutputStream
 
-package object oap {
-  type Key = InternalRow
-}
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.Path
 
-/**
- * To express OAP specific exceptions, including but not limited to indicate unsupported operations,
- * for example: BitMapIndexType only supports one single column
- */
-class OapException(message: String, cause: Throwable) extends Exception(message, cause) {
+import org.apache.spark.sql.execution.datasources.oap.index.IndexFileWriter
 
-  def this(message: String) = this(message, null)
+private[index] case class IndexFileWriterImpl(
+    configuration: Configuration,
+    indexPath: Path) extends IndexFileWriter {
+
+  protected override val os: OutputStream =
+
+  indexPath.getFileSystem(configuration).create(indexPath, true)
+
+  // Give RecordWriter a chance which file it's writing to.
+  override def getName: String = indexPath.toString
 }
