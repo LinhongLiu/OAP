@@ -158,11 +158,11 @@ object FiberCacheManager extends Logging {
 
     val statusRawData = dataFibers.groupBy(_.file).map {
       case (dataFile, fiberSet) =>
-        val fileMeta = DataFileHandleCacheManager(dataFile).asInstanceOf[OapDataFileHandle]
-        val fiberBitSet = new BitSet(fileMeta.groupCount * fileMeta.fieldCount)
+        val fileMeta: DataFileHandle = DataFileHandleCacheManager(dataFile)
+        val fiberBitSet = new BitSet(fileMeta.getGroupCount * fileMeta.getFieldCount)
         fiberSet.foreach(fiber =>
-          fiberBitSet.set(fiber.columnIndex + fileMeta.fieldCount * fiber.rowGroupId))
-        FiberCacheStatus(dataFile.path, fiberBitSet, fileMeta)
+          fiberBitSet.set(fiber.columnIndex + fileMeta.getFieldCount * fiber.rowGroupId))
+        FiberCacheStatus(dataFile.path, fiberBitSet, fileMeta.getGroupCount, fileMeta.getFieldCount)
     }.toSeq
 
     CacheStatusSerDe.serialize(statusRawData)
