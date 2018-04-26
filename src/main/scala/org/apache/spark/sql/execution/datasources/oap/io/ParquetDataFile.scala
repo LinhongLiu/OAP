@@ -51,6 +51,20 @@ private[oap] case class ParquetDataFile(
     configuration.getBoolean(OapConf.OAP_PARQUET_DATA_CACHE_ENABLED.key,
       OapConf.OAP_PARQUET_DATA_CACHE_ENABLED.defaultValue.get)
 
+  private val inUseFiberCache = new Array[FiberCache](schema.length)
+
+  private def releaseFiberCache(idx: Int): Unit = {
+    Option(inUseFiberCache(idx)).foreach { fiberCache =>
+      fiberCache.release()
+      inUseFiberCache.update(idx, null)
+    }
+  }
+
+  private def updateInUseFiberCache(idx: Int, fiberCache: FiberCache): Unit = {
+    releaseFiberCache(idx)
+    inUseFiberCache.update(idx, fiberCache)
+  }
+
   private def buildFiberByteData(
        dataType: DataType,
        rowGroupRowCount: Int,
@@ -141,11 +155,12 @@ private[oap] case class ParquetDataFile(
     val rows = new BatchColumn()
     val groupIdToRowIds = rowIds.map(optionRowIds => getGroupIdForRowIds(optionRowIds))
     val groupIds = groupIdToRowIds.map(_.keys).getOrElse(0 until meta.footer.getBlocks.size())
-    var columns: Array[ColumnValues] = null
 
     val iterator = groupIds.iterator.flatMap { groupId =>
       val fiberCacheGroup = requiredColumnIds.map { id =>
-        FiberCacheManager.get(DataFiber(this, id, groupId), conf)
+        val fiberCache = FiberCacheManager.get(DataFiber(this, id, groupId), conf)
+        updateInUseFiberCache(id, fiberCache)
+        fiberCache
       }
 
       val rowCount = meta.footer.getBlocks.get(groupId).getRowCount.toInt
@@ -162,13 +177,13 @@ private[oap] case class ParquetDataFile(
           rows.toIterator
       }
 
-      CompletionIterator[InternalRow, Iterator[InternalRow]](iter, columns.foreach(_.release())
-      )
+      CompletionIterator[InternalRow, Iterator[InternalRow]](
+        iter, requiredColumnIds.foreach(releaseFiberCache))
     }
     new OapIterator[InternalRow](iterator) {
       override def close(): Unit = {
         // To ensure if any exception happens, caches are still released after calling close()
-        if (columns != null) columns.foreach(_.release())
+        inUseFiberCache.indices.foreach(releaseFiberCache)
       }
     }
   }

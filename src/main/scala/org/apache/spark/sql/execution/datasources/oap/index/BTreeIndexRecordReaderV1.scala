@@ -41,10 +41,23 @@ private[index] case class BTreeIndexRecordReaderV1(
   import BTreeIndexRecordReaderV1.{BTreeFooter, BTreeRowIdList, BTreeNodeData}
 
   private var internalIterator: Iterator[Int] = _
+  private var initialized = false
   private var footer: BTreeFooter = _
-  private var footerFiber: BTreeFiber = _
-  private var footerCache: FiberCache = _
-  private val indexCaches = new ArrayBuffer[WrappedFiberCache]()
+  // Currently used FiberCache, will release it finally.
+  private val MAX_IN_USE_FIBER_CACHE_NUM = 3
+  private val inUseFiberCache = new Array[FiberCache](MAX_IN_USE_FIBER_CACHE_NUM)
+
+  private def releaseFiberCache(sectionId: Int): Unit = {
+    Option(inUseFiberCache(sectionId)).foreach { fiberCache =>
+      fiberCache.release()
+      inUseFiberCache.update(sectionId, null)
+    }
+  }
+
+  private def updateInUseFiberCache(sectionId: Int, fiberCache: FiberCache): Unit = {
+    releaseFiberCache(sectionId)
+    inUseFiberCache.update(sectionId, fiberCache)
+  }
 
   private lazy val ordering = GenerateOrdering.create(schema)
   private lazy val partialOrdering = GenerateOrdering.create(StructType(schema.dropRight(1)))
@@ -72,6 +85,7 @@ private[index] case class BTreeIndexRecordReaderV1(
 
   private var meta: BTreeFileMeta = _
   private[index] def initFileMeta(): Unit = {
+    initialized = true
     val sectionLengthIndex = fileReader.getLen - FOOTER_LENGTH_SIZE - ROW_ID_LIST_LENGTH_SIZE
     val sectionLengthBuffer = new Array[Byte](FOOTER_LENGTH_SIZE + ROW_ID_LIST_LENGTH_SIZE)
     fileReader.readFully(sectionLengthIndex, sectionLengthBuffer)
@@ -107,28 +121,28 @@ private[index] case class BTreeIndexRecordReaderV1(
   def analyzeStatistics(
       keySchema: StructType,
       intervalArray: ArrayBuffer[RangeInterval]): StatsAnalysisResult = {
-    if (footer == null) {
+    if (!initialized) {
       initFileMeta()
-      footerFiber = BTreeFiber(
+      val footerFiber = BTreeFiber(
         () => readFooter(), fileReader.getName, footerSectionId, 0)
-      footerCache = FiberCacheManager.get(footerFiber, configuration)
+      val footerCache = FiberCacheManager.get(footerFiber, configuration)
+      updateInUseFiberCache(footerSectionId, footerCache)
       footer = BTreeFooter(footerCache, schema)
-      indexCaches += footer
     }
     val offset = footer.getStatsOffset
-    val stats = StatisticsManager.read(footerCache, offset, keySchema)
+    val stats = StatisticsManager.read(footer.fiberCache, offset, keySchema)
     StatisticsManager.analyse(stats, intervalArray, configuration)
   }
 
   def initialize(path: Path, intervalArray: ArrayBuffer[RangeInterval]): Unit = {
     Option(TaskContext.get()).foreach(_.addTaskCompletionListener(_ => close()))
-    if (footer == null) {
+    if (!initialized) {
       initFileMeta()
-      footerFiber = BTreeFiber(
+      val footerFiber = BTreeFiber(
         () => readFooter(), fileReader.getName, footerSectionId, 0)
-      footerCache = FiberCacheManager.get(footerFiber, configuration)
+      val footerCache = FiberCacheManager.get(footerFiber, configuration)
+      updateInUseFiberCache(footerSectionId, footerCache)
       footer = BTreeFooter(footerCache, schema)
-      indexCaches += footer
     }
 
     internalIterator = intervalArray.toIterator.flatMap { interval =>
@@ -142,11 +156,11 @@ private[index] case class BTreeIndexRecordReaderV1(
             rowIdListSectionId, partIdx)
 
           val rowIdListCache = FiberCacheManager.get(rowIdListFiber, configuration)
+          updateInUseFiberCache(rowIdListSectionId, rowIdListCache)
           val rowIdList = BTreeRowIdList(rowIdListCache)
-          indexCaches += rowIdList
           val iterator =
             subPosList.toIterator.map(i => rowIdList.getRowId(i % rowIdListSizePerSection))
-          CompletionIterator[Int, Iterator[Int]](iterator, rowIdList.release())
+          CompletionIterator[Int, Iterator[Int]](iterator, releaseFiberCache(rowIdListSectionId))
       }
     } // get the row ids
   }
@@ -200,8 +214,8 @@ private[index] case class BTreeIndexRecordReaderV1(
       nodeIdx
     )
     val nodeCache = FiberCacheManager.get(nodeFiber, configuration)
+    updateInUseFiberCache(nodeSectionId, nodeCache)
     val node = BTreeNodeData(nodeCache, schema)
-    indexCaches += node
 
     val keyCount = node.getKeyCount
 
@@ -229,15 +243,14 @@ private[index] case class BTreeIndexRecordReaderV1(
             nodeIdx + 1)
           val nextNodeCache = FiberCacheManager.get(nextNodeFiber, configuration)
           val nextNode = BTreeNodeData(nextNodeCache, schema)
-          indexCaches += nextNode
+          updateInUseFiberCache(nodeSectionId, nextNodeCache)
           val rowPos = nextNode.getRowIdPos(0)
-          nextNode.release()
           rowPos
         }
       } else {
         node.getRowIdPos(keyPos)
       }
-    node.release()
+    releaseFiberCache(nodeSectionId)
     rowPos
   }
 
@@ -311,8 +324,7 @@ private[index] case class BTreeIndexRecordReaderV1(
 
   def close(): Unit = {
     fileReader.close()
-    indexCaches.foreach(_.release())
-    indexCaches.clear()
+    inUseFiberCache.indices.foreach(releaseFiberCache)
   }
 
   override def hasNext: Boolean = if (internalIterator.hasNext) {
@@ -327,8 +339,7 @@ private[index] case class BTreeIndexRecordReaderV1(
 
 private[index] object BTreeIndexRecordReaderV1 {
 
-  private[index] case class BTreeFooter(fiberCache: FiberCache, schema: StructType)
-      extends WrappedFiberCache {
+  private[index] case class BTreeFooter(fiberCache: FiberCache, schema: StructType) {
     // TODO move to companion object
     private val nodePosOffset = IndexUtils.INT_SIZE
     private val nodeSizeOffset = IndexUtils.INT_SIZE * 2
@@ -380,12 +391,11 @@ private[index] object BTreeIndexRecordReaderV1 {
       fiberCache.getInt(nodeMetaStart + nodeMetaByteSize * getNodesCount)
   }
 
-  private[index] case class BTreeRowIdList(fiberCache: FiberCache) extends WrappedFiberCache {
+  private[index] case class BTreeRowIdList(fiberCache: FiberCache) {
     def getRowId(idx: Int): Int = fiberCache.getInt(idx * IndexUtils.INT_SIZE)
   }
 
-  private[index] case class BTreeNodeData(fiberCache: FiberCache, schema: StructType)
-      extends WrappedFiberCache {
+  private[index] case class BTreeNodeData(fiberCache: FiberCache, schema: StructType) {
     private val posSectionStart = IndexUtils.INT_SIZE
     private val posEntrySize = IndexUtils.INT_SIZE * 2
     private def valueSectionStart = posSectionStart + getKeyCount * posEntrySize
