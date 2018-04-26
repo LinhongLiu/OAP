@@ -15,20 +15,21 @@
  * limitations under the License.
  */
 
-package org.apache.spark.executor.custom
+package org.apache.spark.sql.oap.ui
 
-import org.apache.spark._
+import org.apache.spark.internal.Logging
+import org.apache.spark.ui.{SparkUI, SparkUITab}
 
-/**
- * User can extends the Trait to implement method `status`, after that, user can add a
- * configuration of `spark.executor.customInfoClass` to identify the class that user defined.
- */
-trait CustomManager {
-  /**
-   * get the status for users long run service, the status' format is a string which includes
-   * all infos. The string can be a Json string.
-   * @param conf take SparkConf as input for user to handle
-   * @return
-   */
-  def status(conf: SparkConf): String
+class OapTab(parent: SparkUI) extends SparkUITab(parent, "OAP") with Logging {
+
+  val listener = parent.executorsListener
+
+  attachPage(new FiberCacheManagerPage(this))
+
+  parent.attachTab(this)
+  parent.addStaticHandler(OapTab.STATIC_RESOURCE_DIR, "/static/oap")
+}
+
+object OapTab {
+  private val STATIC_RESOURCE_DIR = "oap/static"
 }

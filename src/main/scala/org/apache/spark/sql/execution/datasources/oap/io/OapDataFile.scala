@@ -38,7 +38,7 @@ private[oap] case class OapDataFile(
 
   private val dictionaries = new Array[Dictionary](schema.length)
   private val codecFactory = new CodecFactory(configuration)
-  private val meta: OapDataFileHandle = DataFileHandleCacheManager(this)
+  private val meta = DataFileHandleCacheManager(this).asInstanceOf[OapDataFileHandle]
 
   private val inUseFiberCache = new Array[FiberCache](schema.length)
 
