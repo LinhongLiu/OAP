@@ -42,15 +42,15 @@ private[oap] case class OapDataFile(
 
   private val inUseFiberCache = new Array[FiberCache](schema.length)
 
-  private def releaseFiberCache(idx: Int): Unit = {
+  private def release(idx: Int): Unit = synchronized {
     Option(inUseFiberCache(idx)).foreach { fiberCache =>
       fiberCache.release()
       inUseFiberCache.update(idx, null)
     }
   }
 
-  private def updateInUseFiberCache(idx: Int, fiberCache: FiberCache): Unit = {
-    releaseFiberCache(idx)
+  private def update(idx: Int, fiberCache: FiberCache): Unit = {
+    release(idx)
     inUseFiberCache.update(idx, fiberCache)
   }
 
@@ -137,7 +137,7 @@ private[oap] case class OapDataFile(
     val iterator = groupIds.iterator.flatMap { groupId =>
       val fiberCacheGroup = requiredIds.map { id =>
         val fiberCache = FiberCacheManager.get(DataFiber(this, id, groupId), conf)
-        updateInUseFiberCache(id, fiberCache)
+        update(id, fiberCache)
         fiberCache
       }
 
@@ -156,12 +156,12 @@ private[oap] case class OapDataFile(
       }
 
       CompletionIterator[InternalRow, Iterator[InternalRow]](
-        iter, requiredIds.foreach(releaseFiberCache))
+        iter, requiredIds.foreach(release))
     }
     new OapIterator[InternalRow](iterator) {
       override def close(): Unit = {
         // To ensure if any exception happens, caches are still released after calling close()
-        inUseFiberCache.indices.foreach(releaseFiberCache)
+        inUseFiberCache.indices.foreach(release)
         OapDataFile.this.close()
       }
     }
