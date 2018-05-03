@@ -129,6 +129,7 @@ class BatchColumn {
   private var currentIndex: Int = 0
   private var rowCount: Int = 0
   private var values: Array[ColumnValues] = _
+  var totalTime: Long = 0
 
   def reset(rowCount: Int, values: Array[ColumnValues]): BatchColumn = {
     this.rowCount = rowCount
@@ -198,7 +199,12 @@ class BatchColumn {
     override def getInterval(ordinal: Int): CalendarInterval =
       throw new NotImplementedError("get interval type")
 
-    override def getLong(ordinal: Int): Long = values(ordinal).getLongValue(currentIndex)
+    override def getLong(ordinal: Int): Long = {
+      val t1 = System.currentTimeMillis()
+      val v = values(ordinal).getLongValue(currentIndex)
+      totalTime += (System.currentTimeMillis() - t1)
+      v
+    }
 
     override def getMap(ordinal: Int): MapData =
       throw new NotImplementedError("get map type")

@@ -25,6 +25,7 @@ import org.apache.parquet.column.Dictionary
 import org.apache.parquet.column.page.DictionaryPage
 import org.apache.parquet.column.values.dictionary.PlainValuesDictionary.{PlainBinaryDictionary, PlainIntegerDictionary}
 
+import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.oap.{BatchColumn, ColumnValues}
 import org.apache.spark.sql.execution.datasources.oap.filecache._
@@ -34,7 +35,7 @@ import org.apache.spark.util.CompletionIterator
 private[oap] case class OapDataFile(
     path: String,
     schema: StructType,
-    configuration: Configuration) extends DataFile {
+    configuration: Configuration) extends DataFile with Logging {
 
   private val dictionaries = new Array[Dictionary](schema.length)
   private val codecFactory = new CodecFactory(configuration)
@@ -127,6 +128,7 @@ private[oap] case class OapDataFile(
     MemoryManager.toDataFiberCache(data)
   }
 
+  private var totalTime = 0L
   private def buildIterator(
       conf: Configuration,
       requiredIds: Array[Int],
@@ -135,6 +137,7 @@ private[oap] case class OapDataFile(
     val groupIdToRowIds = rowIds.map(_.groupBy(rowId => rowId / meta.rowCountInEachGroup))
     val groupIds = groupIdToRowIds.map(_.keys).getOrElse(0 until meta.groupCount)
     val iterator = groupIds.iterator.flatMap { groupId =>
+      val t1 = System.currentTimeMillis()
       val fiberCacheGroup = requiredIds.map { id =>
         val fiberCache = FiberCacheManager.get(DataFiber(this, id, groupId), conf)
         update(id, fiberCache)
@@ -154,14 +157,19 @@ private[oap] case class OapDataFile(
           map(groupId).iterator.map(rowId => rows.moveToRow(rowId % meta.rowCountInEachGroup))
         case None => rows.toIterator
       }
-
+      val ret =
       CompletionIterator[InternalRow, Iterator[InternalRow]](
         iter, requiredIds.foreach(release))
+      val t2 = System.currentTimeMillis()
+      totalTime += (t2 - t1)
+      ret
     }
     new OapIterator[InternalRow](iterator) {
       override def close(): Unit = {
+        logInfo("DataFile used total time: " + totalTime + "ms")
         // To ensure if any exception happens, caches are still released after calling close()
         inUseFiberCache.indices.foreach(release)
+        logInfo("Read value used totalTime: " + rows.totalTime + "ms")
         OapDataFile.this.close()
       }
     }

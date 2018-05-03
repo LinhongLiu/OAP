@@ -74,6 +74,8 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
     sql(s"""CREATE TABLE t_refresh_parquet (a int, b int)
             | USING parquet
             | PARTITIONED by (b)""".stripMargin)
+    sql(s"""CREATE TABLE oap_cache_test (a int, b STRING)
+           | USING oap""".stripMargin)
   }
 
   override def afterEach(): Unit = {
@@ -84,6 +86,7 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
     sqlContext.dropTempTable("parquet_test_date")
     sql("DROP TABLE IF EXISTS t_refresh")
     sql("DROP TABLE IF EXISTS t_refresh_parquet")
+    sql("DROP TABLE IF EXISTS oap_cache_test")
   }
 
   test("empty table") {
@@ -1003,5 +1006,21 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
             Row(2, "this is test 2") :: Row(3, "this is test 3") :: Nil)
       }
     }
+  }
+
+  // scalastyle:off println
+  test("map") {
+    val rowRDD = spark.sparkContext.parallelize(1 to 100, 1).map(i =>
+      Seq(i, s"this is row $i")).map(Row.fromSeq)
+    val schema =
+      StructType(
+        StructField("a", IntegerType) ::
+            StructField("b", StringType) :: Nil)
+    val df = spark.createDataFrame(rowRDD, schema)
+    df.createOrReplaceTempView("t")
+    sql("insert overwrite table oap_test select * from t")
+    // sql("select * from oap_test").cache()
+    sql("cache table oap_test")
+    sql("select * from oap_test").show()
   }
 }
