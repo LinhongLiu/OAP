@@ -22,12 +22,11 @@ import java.sql.Date
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.scalatest.BeforeAndAfterEach
-
 import org.apache.spark.sql.{QueryTest, Row}
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.internal.oap.OapConf
 import org.apache.spark.sql.test.oap.{SharedOapContext, TestIndex, TestPartition}
-import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
+import org.apache.spark.sql.types._
 import org.apache.spark.util.Utils
 
 class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEach {
@@ -53,7 +52,7 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
 
     val path = Utils.createTempDir().getAbsolutePath
     currentPath = path
-    sql(s"""CREATE TEMPORARY VIEW oap_test (a INT, b STRING)
+    sql(s"""CREATE TEMPORARY VIEW oap_test (a LONG, b STRING)
            | USING oap
            | OPTIONS (path '$path')""".stripMargin)
     sql(s"""CREATE TEMPORARY VIEW oap_test_rowgroup (a INT, b STRING)
@@ -1011,16 +1010,17 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
   // scalastyle:off println
   test("map") {
     val rowRDD = spark.sparkContext.parallelize(1 to 100, 1).map(i =>
-      Seq(i, s"this is row $i")).map(Row.fromSeq)
+      Seq(i.toLong, s"this is row $i")).map(Row.fromSeq)
     val schema =
       StructType(
-        StructField("a", IntegerType) ::
+        StructField("a", LongType) ::
             StructField("b", StringType) :: Nil)
     val df = spark.createDataFrame(rowRDD, schema)
     df.createOrReplaceTempView("t")
+    spark.conf.set(OapConf.OAP_DEBUG_FLAG.key, value = true)
     sql("insert overwrite table oap_test select * from t")
-    // sql("select * from oap_test").cache()
-    sql("cache table oap_test")
-    sql("select * from oap_test").show()
+    // sql("select a from oap_test").foreach(row => println(row))
+    // sql("cache table oap_test")
+    sql("select * from oap_test").foreach(row => println(row))
   }
 }

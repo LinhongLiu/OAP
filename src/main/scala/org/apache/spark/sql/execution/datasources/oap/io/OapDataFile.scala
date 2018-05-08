@@ -27,6 +27,9 @@ import org.apache.parquet.column.values.dictionary.PlainValuesDictionary.{PlainB
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.expressions.UnsafeRow
+import org.apache.spark.sql.catalyst.expressions.codegen.{BufferHolder, UnsafeRowWriter}
+import org.apache.spark.sql.execution.columnar.MutableUnsafeRow
 import org.apache.spark.sql.execution.datasources.oap.{BatchColumn, ColumnValues}
 import org.apache.spark.sql.execution.datasources.oap.filecache._
 import org.apache.spark.sql.types._
@@ -185,6 +188,16 @@ private[oap] case class OapDataFile(
       requiredIds: Array[Int],
       rowIds: Array[Int]): OapIterator[InternalRow] = {
     buildIterator(configuration, requiredIds, Some(rowIds))
+  }
+
+  def iteratorNG(requiredIds: Array[Int]): Iterator[InternalRow] = {
+
+    val dataFile = this
+
+    val iterator = new SpecificColumnarIterator()
+    iterator.initialize(
+      schema, dataFile, meta.groupCount, meta.rowCountInEachGroup, meta.rowCountInLastGroup)
+    iterator
   }
 
   def close(): Unit = {

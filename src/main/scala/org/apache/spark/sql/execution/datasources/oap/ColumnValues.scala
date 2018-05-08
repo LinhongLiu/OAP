@@ -17,15 +17,17 @@
 
 package org.apache.spark.sql.execution.datasources.oap
 
+import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
 import org.apache.spark.sql.catalyst.util.{ArrayData, MapData}
+import org.apache.spark.sql.execution.columnar.MutableUnsafeRow
 import org.apache.spark.sql.execution.datasources.oap.filecache.FiberCache
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.{CalendarInterval, UTF8String}
 import org.apache.spark.util.collection.BitSet
 
-class ColumnValues(defaultSize: Int, dataType: DataType, val buffer: FiberCache) {
+class ColumnValues(defaultSize: Int, dataType: DataType, val buffer: FiberCache) extends Logging {
   require(dataType.isInstanceOf[AtomicType], s"Only atomic type accepted for now, got $dataType.")
 
   // for any FiberData, the first `(defaultSize - 1) >> 6 + 1` longs will be the bitmask
@@ -35,6 +37,27 @@ class ColumnValues(defaultSize: Int, dataType: DataType, val buffer: FiberCache)
   def isNullAt(idx: Int): Boolean = {
     val bitmask = 1L << (idx & 0x3f)   // mod 64 and shift
     (buffer.getLong(idx >> 6 << 3) & bitmask) == 0  // div by 64 and mask
+  }
+
+  def extractTo(row: InternalRow, idx: Int, column: Int): Unit = dataType match {
+    case BooleanType => row.setBoolean(column, getBooleanValue(idx))
+    case ByteType => row.setByte(column, getByteValue(idx))
+    case DoubleType => row.setDouble(column, getDoubleValue(idx))
+    case FloatType => row.setFloat(column, getFloatValue(idx))
+    case IntegerType => row.setInt(column, getIntValue(idx))
+    case LongType => row.setLong(column, getLongValue(idx))
+    case ShortType => row.setShort(column, getShortValue(idx))
+    case StringType =>
+      val length = getIntValue(idx * 2)
+      val offset = getIntValue(idx * 2 + 1)
+      row.asInstanceOf[MutableUnsafeRow].writer.write(column, buffer.getBytes(offset, length))
+    case _: ArrayType => throw new NotImplementedError(s"Array")
+    case CalendarIntervalType => throw new NotImplementedError(s"CalendarInterval")
+    case _: DecimalType => throw new NotImplementedError(s"Decimal")
+    case _: MapType => throw new NotImplementedError(s"Map")
+    case _: StructType => throw new NotImplementedError(s"Struct")
+    case TimestampType => throw new NotImplementedError(s"Timestamp")
+    case other => throw new NotImplementedError(s"$other")
   }
 
   private def genericGet(idx: Int): Any = dataType match {
@@ -76,7 +99,7 @@ class ColumnValues(defaultSize: Int, dataType: DataType, val buffer: FiberCache)
     buffer.getInt(dataOffset + idx * IntegerType.defaultSize)
   }
   def getLongValue(idx: Int): Long = {
-    buffer.getLong(dataOffset + idx * LongType.defaultSize)
+    buffer.getLong(dataOffset + idx.toLong * LongType.defaultSize)
   }
   def getShortValue(idx: Int): Short = {
     buffer.getShort(dataOffset + idx * ShortType.defaultSize)
