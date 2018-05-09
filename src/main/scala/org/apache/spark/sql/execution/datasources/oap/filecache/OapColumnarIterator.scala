@@ -29,12 +29,18 @@ import org.apache.spark.sql.types.{DataType, LongType, StructType}
 
 abstract class OapColumnarIterator extends Iterator[InternalRow] {
   def initialize(
+      dataFile: DataFile, columnTypes: Array[DataType], groupCount: Int,
+      rowCountInEachGroup: Int, rowCountInLastGroup: Int): Unit
+}
+
+abstract class OapColumnarIterator2 extends Iterator[InternalRow] {
+  def initialize(
       schema: StructType,
       dataFile: DataFile, groupCount: Int,
       rowCountInEachGroup: Int, rowCountInLastGroup: Int): Unit
 }
 
-class SpecificColumnarIterator extends OapColumnarIterator {
+class SpecificColumnarIterator extends OapColumnarIterator2 {
 
   private var dataFile: DataFile = _
   private var buffers: Seq[ColumnValues] = _

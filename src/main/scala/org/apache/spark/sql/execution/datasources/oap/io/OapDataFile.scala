@@ -192,11 +192,13 @@ private[oap] case class OapDataFile(
 
   def iteratorNG(requiredIds: Array[Int]): Iterator[InternalRow] = {
 
+    val columnTypes = requiredIds.map(i => schema(i).dataType)
+    val iterator = GenerateOapColumnAccessor.generate(columnTypes)
+
     val dataFile = this
 
-    val iterator = new SpecificColumnarIterator()
-    iterator.initialize(
-      schema, dataFile, meta.groupCount, meta.rowCountInEachGroup, meta.rowCountInLastGroup)
+    iterator.initialize(dataFile, columnTypes,
+      meta.groupCount, meta.rowCountInEachGroup, meta.rowCountInLastGroup)
     iterator
   }
 
