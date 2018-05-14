@@ -39,13 +39,15 @@ abstract class DataFile {
 
   def createDataFileHandle(): DataFileHandle
   def getFiberData(groupId: Int, fiberId: Int): FiberCache
-  def iterator(requiredIds: Array[Int]): OapIterator[InternalRow]
-  def iterator(requiredIds: Array[Int], rowIds: Array[Int]): OapIterator[InternalRow]
+  def iterator(requiredIds: Array[Int]): CloseableIterator[InternalRow]
+  def iterator(requiredIds: Array[Int], rowIds: Array[Int]): CloseableIterator[InternalRow]
 
   def totalRows(): Long
 }
 
-private[oap] class OapIterator[T](inner: Iterator[T]) extends Iterator[T] with Closeable {
+trait CloseableIterator[T] extends Iterator[T] with Closeable
+
+private[oap] class OapIterator[T](inner: Iterator[T]) extends CloseableIterator[T] {
   override def hasNext: Boolean = inner.hasNext
   override def next(): T = inner.next()
   override def close(): Unit = {}
