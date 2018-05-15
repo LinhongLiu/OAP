@@ -260,7 +260,7 @@ class OapPlannerSuite
     }
   }
 
-  test("aggregations with group by test") {
+  ignore("aggregations with group by test") {
     spark.conf.set(OapFileFormat.ROW_GROUP_SIZE, 50)
     val data = (1 to 300).map { i => (i % 101, i % 37) }
     val dataRDD = spark.sparkContext.parallelize(data, 2)
