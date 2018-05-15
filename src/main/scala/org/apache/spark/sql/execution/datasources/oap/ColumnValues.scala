@@ -219,7 +219,7 @@ class BatchColumn {
 }
 
 class BinaryColumnValues(defaultSize: Int, buffer: FiberCache)
-    extends ColumnValues(defaultSize, LongType, buffer) {
+    extends ColumnValues(defaultSize, BinaryType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
     if (isNullAt(idx)) {
@@ -233,7 +233,7 @@ class BinaryColumnValues(defaultSize: Int, buffer: FiberCache)
 }
 
 class BooleanColumnValues(defaultSize: Int, buffer: FiberCache)
-    extends ColumnValues(defaultSize, LongType, buffer) {
+    extends ColumnValues(defaultSize, BooleanType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
     if (isNullAt(idx)) {
@@ -244,7 +244,7 @@ class BooleanColumnValues(defaultSize: Int, buffer: FiberCache)
   }
 }
 class ByteColumnValues(defaultSize: Int, buffer: FiberCache)
-    extends ColumnValues(defaultSize, LongType, buffer) {
+    extends ColumnValues(defaultSize, ByteType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
     if (isNullAt(idx)) {
@@ -255,7 +255,7 @@ class ByteColumnValues(defaultSize: Int, buffer: FiberCache)
   }
 }
 class DateColumnValues(defaultSize: Int, buffer: FiberCache)
-    extends ColumnValues(defaultSize, LongType, buffer) {
+    extends ColumnValues(defaultSize, DateType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
     if (isNullAt(idx)) {
@@ -266,18 +266,18 @@ class DateColumnValues(defaultSize: Int, buffer: FiberCache)
   }
 }
 class DoubleColumnValues(defaultSize: Int, buffer: FiberCache)
-    extends ColumnValues(defaultSize, LongType, buffer) {
+    extends ColumnValues(defaultSize, DoubleType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
     if (isNullAt(idx)) {
       row.setNullAt(column)
     } else {
-      row.setDouble(column, getDateValue(idx))
+      row.setDouble(column, getDoubleValue(idx))
     }
   }
 }
 class FloatColumnValues(defaultSize: Int, buffer: FiberCache)
-    extends ColumnValues(defaultSize, LongType, buffer) {
+    extends ColumnValues(defaultSize, FloatType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
     if (isNullAt(idx)) {
@@ -288,7 +288,7 @@ class FloatColumnValues(defaultSize: Int, buffer: FiberCache)
   }
 }
 class IntColumnValues(defaultSize: Int, buffer: FiberCache)
-    extends ColumnValues(defaultSize, LongType, buffer) {
+    extends ColumnValues(defaultSize, IntegerType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
     if (isNullAt(idx)) {
@@ -302,11 +302,15 @@ class LongColumnValues(defaultSize: Int, buffer: FiberCache)
     extends ColumnValues(defaultSize, LongType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
-    row.setLong(column, getLongValue(idx))
+    if (isNullAt(idx)) {
+      row.setNullAt(column)
+    } else {
+      row.setLong(column, getLongValue(idx))
+    }
   }
 }
 class ShortColumnValues(defaultSize: Int, buffer: FiberCache)
-    extends ColumnValues(defaultSize, LongType, buffer) {
+    extends ColumnValues(defaultSize, ShortType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
     if (isNullAt(idx)) {
@@ -317,7 +321,7 @@ class ShortColumnValues(defaultSize: Int, buffer: FiberCache)
   }
 }
 class StringColumnValues(defaultSize: Int, buffer: FiberCache)
-    extends ColumnValues(defaultSize, LongType, buffer) {
+    extends ColumnValues(defaultSize, StringType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
     if (isNullAt(idx)) {
