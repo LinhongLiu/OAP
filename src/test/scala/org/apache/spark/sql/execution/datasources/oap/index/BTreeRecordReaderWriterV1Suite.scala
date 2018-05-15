@@ -17,22 +17,20 @@
 
 package org.apache.spark.sql.execution.datasources.oap.index
 
-import org.apache.hadoop.conf.Configuration
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, InputStream}
 
-import org.apache.spark.memory.{TestMemoryManager, TaskMemoryManager}
-import org.apache.spark.metrics.MetricsSystem
-import org.apache.spark.{SecurityManager, TaskContextImpl, TaskContext, SparkConf}
-
 import scala.util.Random
 
+import org.apache.hadoop.conf.Configuration
+
+import org.apache.spark.{SecurityManager, TaskContext, TaskContextImpl}
+import org.apache.spark.memory.{TaskMemoryManager, TestMemoryManager}
+import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.oap.filecache.{FiberCache, MemoryManager}
-import org.apache.spark.sql.execution.datasources.oap.index.BTreeIndexRecordReaderV1.{BTreeFooter, BTreeNodeData, BTreeRowIdList}
 import org.apache.spark.sql.test.oap.SharedOapContext
 import org.apache.spark.sql.types._
-
 
 class BTreeRecordReaderWriterV1Suite extends SharedOapContext {
 
@@ -111,7 +109,7 @@ class BTreeRecordReaderWriterV1Suite extends SharedOapContext {
           "BTreeRecordReaderWriterSuite",
           conf,
           new SecurityManager(conf))))
-    val writer = new BTreeIndexRecordWriter(configuration, fileWriter, schema)
+    val writer = BTreeIndexRecordWriterV1(configuration, fileWriter, schema)
 
     // Write rows
     nonNullKeyRecords.map(InternalRow(_)).foreach(writer.write(null, _))
@@ -124,7 +122,7 @@ class BTreeRecordReaderWriterV1Suite extends SharedOapContext {
     // Create reader
     val fileReader = new TestIndexFileReader(indexData)
     val reader = BTreeIndexRecordReaderV1(configuration, schema, fileReader)
-    reader.initFileMeta()
+    reader.initializeReader()
 
     val allRows = parseIndexData(reader)
     val nonNullRows = allRows.slice(0, nonNullKeyRecords.length)
@@ -141,7 +139,7 @@ class BTreeRecordReaderWriterV1Suite extends SharedOapContext {
     // Read file meta
     val meta = reader.getFileMeta
     // Read footer
-    val footer = BTreeFooter(reader.readFooter(), schema)
+    val footer = reader.readBTreeFooter()
 
     // Parse Footer
     val nodeCount = footer.getNodesCount
@@ -157,16 +155,16 @@ class BTreeRecordReaderWriterV1Suite extends SharedOapContext {
     val totalRowCount = footer.getNonNullKeyRecordCount + footer.getNullKeyRecordCount
     val partCount = (totalRowCount / partSize) + (if (totalRowCount % partSize == 0) 0 else 1)
     val rowIdList = (0 until partCount).flatMap { i =>
-      val rowIdListPart = BTreeRowIdList(reader.readRowIdList(i))
-      val count = if ((i + 1) * reader.rowIdListSizePerSection > totalRowCount) {
-        totalRowCount % reader.rowIdListSizePerSection
+      val rowIdListPart = reader.readBTreeRowIdList(footer, i)
+      val count = if ((i + 1) * partSize > totalRowCount) {
+        totalRowCount % partSize
       } else {
-        reader.rowIdListSizePerSection
+        partSize
       }
       (0 until count).map(rowIdListPart.getRowId)
     }
     val nodeFibers = (0 until nodeCount).map { n =>
-      BTreeNodeData(reader.readNode(footer.getNodeOffset(n), footer.getNodeSize(n)), schema)
+      reader.readBTreeNodeData(footer, n)
     }
     val uniqueKeys = nodeFibers.flatMap { node =>
       (0 until node.getKeyCount).map(i => (node.getKey(i, schema), node.getRowIdPos(i)))

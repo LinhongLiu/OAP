@@ -20,10 +20,12 @@ package org.apache.spark.sql.execution.datasources.oap.index
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.mapreduce.{RecordWriter, TaskAttemptContext}
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat
+import org.apache.parquet.format.CompressionCodec
 import org.apache.parquet.hadoop.util.ContextUtil
 
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.OapException
+import org.apache.spark.sql.execution.datasources.oap.OapFileFormat
 import org.apache.spark.sql.execution.datasources.oap.index.OapIndexProperties.IndexVersion
 import org.apache.spark.sql.internal.oap.OapConf
 import org.apache.spark.sql.types.StructType
@@ -31,6 +33,13 @@ import org.apache.spark.sql.types.StructType
 private[index] class OapIndexOutputFormat extends FileOutputFormat[Void, InternalRow] {
 
   private val BTREE_WRITER_VERSION = OapConf.OAP_INDEX_BTREE_WRITER_VERSION.key
+
+  private def getCodec(taskAttemptContext: TaskAttemptContext): CompressionCodec = {
+    val configuration = ContextUtil.getConfiguration(taskAttemptContext)
+    CompressionCodec.valueOf(
+      configuration.get(OapFileFormat.COMPRESSION, OapFileFormat.DEFAULT_COMPRESSION))
+  }
+
   private def getWriterVersion(taskAttemptContext: TaskAttemptContext) = {
     val configuration = ContextUtil.getConfiguration(taskAttemptContext)
     val indexVersion =
@@ -53,6 +62,7 @@ private[index] class OapIndexOutputFormat extends FileOutputFormat[Void, Interna
       }
     }
 
+    val codec = getCodec(taskAttemptContext)
     val writerVersion = getWriterVersion(taskAttemptContext)
 
     val extension = "." + configuration.get(OapIndexFileFormat.INDEX_TIME) +
@@ -68,7 +78,7 @@ private[index] class OapIndexOutputFormat extends FileOutputFormat[Void, Interna
     if (canBeSkipped(file)) {
       new DummyIndexRecordWriter()
     } else if (indexType == "BTREE") {
-      BTreeIndexRecordWriter(configuration, file, schema, writerVersion)
+      BTreeIndexRecordWriter(configuration, file, schema, codec, writerVersion)
     } else if (indexType == "BITMAP") {
       val writer = file.getFileSystem(configuration).create(file, true)
       new BitmapIndexRecordWriter(configuration, writer, schema)
