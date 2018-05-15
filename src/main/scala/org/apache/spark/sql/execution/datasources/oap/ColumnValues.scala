@@ -222,9 +222,13 @@ class BinaryColumnValues(defaultSize: Int, buffer: FiberCache)
     extends ColumnValues(defaultSize, LongType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
-    val length = getIntValue(idx * 2)
-    val offset = getIntValue(idx * 2 + 1)
-    row.asInstanceOf[MutableUnsafeRow].writer.write(column, buffer.getBytes(offset, length))
+    if (isNullAt(idx)) {
+      row.setNullAt(column)
+    } else {
+      val length = getIntValue(idx * 2)
+      val offset = getIntValue(idx * 2 + 1)
+      row.asInstanceOf[MutableUnsafeRow].writer.write(column, buffer.getBytes(offset, length))
+    }
   }
 }
 
@@ -232,42 +236,66 @@ class BooleanColumnValues(defaultSize: Int, buffer: FiberCache)
     extends ColumnValues(defaultSize, LongType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
-    row.setBoolean(column, getBooleanValue(idx))
+    if (isNullAt(idx)) {
+      row.setNullAt(column)
+    } else {
+      row.setBoolean(column, getBooleanValue(idx))
+    }
   }
 }
 class ByteColumnValues(defaultSize: Int, buffer: FiberCache)
     extends ColumnValues(defaultSize, LongType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
-    row.setByte(column, getByteValue(idx))
+    if (isNullAt(idx)) {
+      row.setNullAt(column)
+    } else {
+      row.setByte(column, getByteValue(idx))
+    }
   }
 }
 class DateColumnValues(defaultSize: Int, buffer: FiberCache)
     extends ColumnValues(defaultSize, LongType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
-    row.setInt(column, getDateValue(idx))
+    if (isNullAt(idx)) {
+      row.setNullAt(column)
+    } else {
+      row.setInt(column, getDateValue(idx))
+    }
   }
 }
 class DoubleColumnValues(defaultSize: Int, buffer: FiberCache)
     extends ColumnValues(defaultSize, LongType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
-    row.setDouble(column, getDateValue(idx))
+    if (isNullAt(idx)) {
+      row.setNullAt(column)
+    } else {
+      row.setDouble(column, getDateValue(idx))
+    }
   }
 }
 class FloatColumnValues(defaultSize: Int, buffer: FiberCache)
     extends ColumnValues(defaultSize, LongType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
-    row.setFloat(column, getFloatValue(idx))
+    if (isNullAt(idx)) {
+      row.setNullAt(column)
+    } else {
+      row.setFloat(column, getFloatValue(idx))
+    }
   }
 }
 class IntColumnValues(defaultSize: Int, buffer: FiberCache)
     extends ColumnValues(defaultSize, LongType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
-    row.setInt(column, getIntValue(idx))
+    if (isNullAt(idx)) {
+      row.setNullAt(column)
+    } else {
+      row.setInt(column, getIntValue(idx))
+    }
   }
 }
 class LongColumnValues(defaultSize: Int, buffer: FiberCache)
@@ -281,16 +309,24 @@ class ShortColumnValues(defaultSize: Int, buffer: FiberCache)
     extends ColumnValues(defaultSize, LongType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
-    row.setShort(column, getShortValue(idx))
+    if (isNullAt(idx)) {
+      row.setNullAt(column)
+    } else {
+      row.setShort(column, getShortValue(idx))
+    }
   }
 }
 class StringColumnValues(defaultSize: Int, buffer: FiberCache)
     extends ColumnValues(defaultSize, LongType, buffer) {
 
   override def extractTo(row: Key, idx: Int, column: Int): Unit = {
-    val length = getIntValue(idx * 2)
-    val offset = getIntValue(idx * 2 + 1)
-    row.asInstanceOf[MutableUnsafeRow].writer.write(column, buffer.getBytes(offset, length))
+    if (isNullAt(idx)) {
+      row.setNullAt(column)
+    } else {
+      val length = getIntValue(idx * 2)
+      val offset = getIntValue(idx * 2 + 1)
+      row.asInstanceOf[MutableUnsafeRow].writer.write(column, buffer.getBytes(offset, length))
+    }
   }
 }
 
