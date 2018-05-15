@@ -202,6 +202,7 @@ object OapConf {
       .internal()
       .doc("The writer version of BTree index")
       .stringConf
+      .checkValues(Set("v1", "v2"))
       .createWithDefault("v1")
 
   val OAP_PARQUET_DATA_CACHE_ENABLED =
