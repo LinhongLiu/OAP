@@ -30,7 +30,7 @@ private[index] case class BTreeIndexRecordReaderV1(
     configuration: Configuration,
     schema: StructType,
     fileReader: IndexFileReader)
-    extends BTreeIndexRecordReader(configuration, schema, fileReader) {
+  extends BTreeIndexRecordReader(configuration, schema, fileReader) {
 
   private val META_SIZE = FOOTER_LENGTH_SIZE + ROW_ID_LIST_LENGTH_SIZE
 

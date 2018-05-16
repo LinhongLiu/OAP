@@ -112,6 +112,15 @@ object OapConf {
     .checkValues(Set("UNCOMPRESSED", "SNAPPY", "GZIP", "LZO"))
     .createWithDefault("GZIP")
 
+  val OAP_INDEX_BTREE_COMPRESSION = SQLConfigBuilder("spark.sql.oap.index.compression.codec")
+    .internal()
+    .doc("Sets the compression codec use when writing Parquet files. Acceptable values include: " +
+        "uncompressed, snappy, gzip, lzo.")
+    .stringConf
+    .transform(_.toUpperCase())
+    .checkValues(Set("UNCOMPRESSED", "SNAPPY", "GZIP", "LZO"))
+    .createWithDefault("GZIP")
+
   val OAP_ROW_GROUP_SIZE =
     SQLConfigBuilder("spark.sql.oap.rowgroup.size")
       .internal()

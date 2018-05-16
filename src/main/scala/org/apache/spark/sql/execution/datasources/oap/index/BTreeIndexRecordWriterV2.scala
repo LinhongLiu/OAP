@@ -18,277 +18,55 @@
 package org.apache.spark.sql.execution.datasources.oap.index
 
 import java.io.ByteArrayOutputStream
-import java.util.Comparator
 
-import scala.collection.JavaConverters._
-
-import com.google.common.collect.ArrayListMultimap
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.mapreduce.TaskAttemptContext
 import org.apache.parquet.format.CompressionCodec
 
-import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{Ascending, BoundReference, Descending, FromUnsafeProjection, SortOrder}
-import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
-import org.apache.spark.sql.execution.datasources.OapException
 import org.apache.spark.sql.execution.datasources.oap.index.OapIndexProperties.IndexVersion
-import org.apache.spark.sql.execution.datasources.oap.io.{CodecFactory, IndexFile}
-import org.apache.spark.sql.execution.datasources.oap.statistics.StatisticsWriteManager
-import org.apache.spark.sql.execution.datasources.oap.utils.{BTreeNode, BTreeUtils, NonNullKeyWriter}
-import org.apache.spark.sql.internal.oap.OapConf
+import org.apache.spark.sql.execution.datasources.oap.io.CodecFactory
 import org.apache.spark.sql.types.StructType
 
 private[index] case class BTreeIndexRecordWriterV2(
     configuration: Configuration,
     fileWriter: IndexFileWriter,
     keySchema: StructType,
-    codec: CompressionCodec = CompressionCodec.UNCOMPRESSED) extends BTreeIndexRecordWriter {
+    codec: CompressionCodec = CompressionCodec.UNCOMPRESSED)
+  extends BTreeIndexRecordWriter(configuration, fileWriter, keySchema) {
 
-  private val VERSION_NUM = IndexVersion.OAP_INDEX_V2.id
-
-  @transient private lazy val genericProjector = FromUnsafeProjection(keySchema)
-  @transient private lazy val nnkw = new NonNullKeyWriter(keySchema)
   @transient private val compressor = new CodecFactory(configuration).getCompressor(codec)
 
-  private val rowIdListSizePerSection =
-    configuration.getInt(OapConf.OAP_BTREE_ROW_LIST_PART_SIZE.key, 1024 * 1024)
+  override protected val VERSION_NUM: Int = IndexVersion.OAP_INDEX_V2.id
 
-  private val multiHashMap = ArrayListMultimap.create[InternalRow, Int]()
-  private var recordCount: Int = 0
-  private lazy val statisticsManager = new StatisticsWriteManager {
-    this.initialize(BTreeIndexType, keySchema, configuration)
-  }
-
-  override def write(key: Void, value: InternalRow): Unit = {
-    val v = genericProjector(value).copy()
-    multiHashMap.put(v, recordCount)
-    statisticsManager.addOapKey(v)
-    if (recordCount == Int.MaxValue) {
-      throw new OapException("Cannot support indexing more than 2G rows!")
-    }
-    recordCount += 1
-  }
-
-  override def close(context: TaskAttemptContext): Unit = {
-    flush()
-    fileWriter.close()
-  }
-
-  private[index] def sortUniqueKeys(): (Seq[InternalRow], Seq[InternalRow]) = {
-    def buildOrdering(keySchema: StructType): Ordering[InternalRow] = {
-      // here i change to use param id to index_id to get data type in keySchema
-      val order = keySchema.zipWithIndex.map {
-        case (field, index) => SortOrder(
-          BoundReference(index, field.dataType, nullable = true),
-          if (!field.metadata.contains("isAscending") || field.metadata.getBoolean("isAscending")) {
-            Ascending
-          } else {
-            Descending
-          }
-        )
-      }
-      GenerateOrdering.generate(order, keySchema.toAttributes)
-    }
-
-    lazy val ordering = buildOrdering(keySchema)
-    val partitionUniqueSize = multiHashMap.keySet().size()
-    val uniqueKeys = multiHashMap.keySet().toArray(new Array[InternalRow](partitionUniqueSize))
-    assert(uniqueKeys.size == partitionUniqueSize)
-    val (nullKeys, nonNullKeys) = uniqueKeys.partition(_.anyNull)
-    assert(nullKeys.length + nonNullKeys.length == partitionUniqueSize)
-    require(
-      nullKeys.isEmpty || keySchema.length == 1,
-      "No support for multi-column index building with null keys!")
-    lazy val comparator: Comparator[InternalRow] = new Comparator[InternalRow]() {
-      override def compare(o1: InternalRow, o2: InternalRow): Int = {
-        if (o1 == null && o2 == null) {
-          0
-        } else if (o1 == null) {
-          -1
-        } else if (o2 == null) {
-          1
-        } else {
-          ordering.compare(o1, o2)
-        }
-      }
-    }
-    // sort keys
-    java.util.Arrays.sort(nonNullKeys, comparator)
-    (nullKeys.toSeq, nonNullKeys.toSeq)
-  }
-
-  private var rowIdListSize = 0L
-
-  /**
-   * Working Flow:
-   *  1. Write index magic version into header
-   *  2. Split all unique keys into some nodes
-   *  3. Serialize nodes and call fileWriter.writeNode()
-   *  4. Serialize row id List based on sorted unique keys and call fileWriter.writeRowIdList()
-   *  5. Serialize footer and call fileWriter.writeFooter()
-   *  5. Write index file meta: footer size, row id list size
-   */
-  private[index] def flush(): Unit = {
-    val (nullKeys, nonNullUniqueKeys) = sortUniqueKeys()
-
-    // Write index magic version into header
-    fileWriter.write(IndexUtils.serializeVersion(VERSION_NUM))
-    // Write Node
-    val nodeMetaSeq = serializeAndWriteNode(nonNullUniqueKeys)
-    // Write Row Id List
-    val rowIdListPartLengthSeq = serializeAndWriteRowIdLists(nonNullUniqueKeys ++ nullKeys)
-    // Write Footer
-    val nullKeyRowCount = nullKeys.map(multiHashMap.get(_).size()).sum
-    val footerBuf = serializeFooter(nullKeyRowCount, nodeMetaSeq, rowIdListPartLengthSeq)
-    fileWriter.write(footerBuf)
-    // Write index file meta: footer size, row id list size
-    fileWriter.writeLong(rowIdListSize)
-    fileWriter.writeInt(footerBuf.length)
-    fileWriter.writeInt(codec.getValue)
-  }
-
-  private[index] def serializeAndWriteNode(
-      nonNullUniqueKeys: Seq[InternalRow]): Seq[BTreeNodeMetaData] = {
-
-    val treeShape = BTreeUtils.generate2(nonNullUniqueKeys.length)
-    // Trick here. If root node has no child, then write root node as a child.
-    val children = if (treeShape.children.nonEmpty) treeShape.children else treeShape :: Nil
-
-    var startPosInKeyList = 0
-    var startPosInRowList = 0
-    var i = 0
-    children.map { node =>
-      val keyCount = sumKeyCount(node) // total number of keys of this node
-      val nodeUniqueKeys =
-      nonNullUniqueKeys.slice(startPosInKeyList, startPosInKeyList + keyCount)
-
-      // total number of row ids of this node
-      val rowCount = nodeUniqueKeys.map(multiHashMap.get(_).size()).sum
-      i += 1
-      val nodeBuf = serializeNode(nodeUniqueKeys, startPosInRowList)
-      fileWriter.write(nodeBuf)
-      startPosInKeyList += keyCount
-      startPosInRowList += rowCount
-      if (keyCount == 0 || nodeUniqueKeys.isEmpty || nonNullUniqueKeys.isEmpty) {
-        // this node is an empty node
-        BTreeNodeMetaData(0, nodeBuf.length, null, null)
-      }
-      else BTreeNodeMetaData(rowCount, nodeBuf.length, nodeUniqueKeys.head, nodeUniqueKeys.last)
-    }
-  }
-
-  /**
-   * Layout of node:
-   * Field Description                        Byte Size
-   * Key Meta Section                         4 + 4 * N
-   * Key Count                                 4 Bytes
-   * Start Pos for Key #1 in Key Data          4 Bytes
-   * Start Pos for Key #1 in Row Id List       4 Bytes
-   * ...
-   * Start Pos for Key #N in Key Data          4 Bytes
-   * Start Pos for Key #N in Row Id List       4 Bytes
-   * Key Data Section                         M Bytes
-   * Key Data For Key #1
-   * ...
-   * Key Data For Key #N
-   */
-  private[index] def serializeNode(
-      uniqueKeys: Seq[InternalRow],
-      startPosInRowList: Int): Array[Byte] = {
-    val buffer = new ByteArrayOutputStream()
-    val keyBuffer = new ByteArrayOutputStream()
-
-    IndexUtils.writeInt(buffer, uniqueKeys.length)
-    var rowPos = startPosInRowList
-    uniqueKeys.foreach { key =>
-      IndexUtils.writeInt(buffer, keyBuffer.size())
-      IndexUtils.writeInt(buffer, rowPos)
-      nnkw.writeKey(keyBuffer, key)
-      rowPos += multiHashMap.get(key).size()
-    }
-    IndexUtils.compressIndexData(compressor, buffer.toByteArray ++ keyBuffer.toByteArray)
-  }
-
-  // TODO: BTreeNode can be re-write. It doesn't carry any values.
-  private def sumKeyCount(node: BTreeNode): Int = {
-    if (node.children.nonEmpty) node.children.map(sumKeyCount).sum else node.root
-  }
-
-  /**
-   * Example of Row Id List:
-   * Row Id: 0 1 2 3 4 5 6 7 8 9
-   * Key:    1 2 3 4 1 2 3 4 1 2
-   * Then Row Id List is Stored as: 0481592637
-   */
-  private def serializeAndWriteRowIdLists(uniqueKeys: Seq[InternalRow]): Seq[Int] = {
-    uniqueKeys.flatMap(key => multiHashMap.get(key).asScala)
-      .grouped(rowIdListSizePerSection)
-      .map { rowIds =>
-        val bytes = serializeRowIdList(rowIds)
-        fileWriter.write(bytes)
-        rowIdListSize += bytes.length
-        bytes.length
-      }.toSeq
-  }
-
-  private def serializeRowIdList(rowIds: Seq[Int]): Array[Byte] = {
-    val bytes = rowIds.flatMap(IndexUtils.toBytes).toArray
+  override protected def compressData(bytes: Array[Byte]): Array[Byte] = {
     IndexUtils.compressIndexData(compressor, bytes)
   }
 
-  /**
-   * Layout of Footer:
-   * Field Description              Byte Size
-   * Index Version Number           4 Bytes
-   * Row Count with Non-Null Key    4 Bytes
-   * Row Count With Null Key        4 Bytes
-   * Row Id List Partition Count    4 Bytes
-   * Row Id List Partition Size     4 Bytes
-   * Node Count                     4 Bytes
-   * Row Id List Part #1 Start      4 Bytes
-   * Row Id List Part #1 Size       4 Bytes
-   * ...
-   * Row Id List Part #N Start      4 Bytes
-   * Row Id List Part #N Size       4 Bytes
-   * Nodes Meta Data                Node Count * 20 Bytes
-   * Row Count                        4 Bytes
-   * Start Pos                        4 Bytes
-   * Size In Byte                     4 Bytes
-   * Min Key Pos in Key Data          4 Bytes
-   * Max Key Pos in Key Data          4 Bytes
-   *
-   * Statistic info Size              4 Bytes
-   * Statistic Info                   X Bytes
-   * Key Data - Variable Bytes      M
-   * Min Key For Child #1 - Min
-   * Max Key For Child #1
-   * ...
-   * Min Key For Child #N
-   * Max Key For Child #N - Max
-   * TODO: Make serialize and deserialize(in reader) in same style.
-   */
-  private def serializeFooter(nullKeyRowCount: Int,
-      nodes: Seq[BTreeNodeMetaData],
-      rowIdListPartLengthSeq: Seq[Int]): Array[Byte] = {
+  override protected def writeCompressCodec(writer: IndexFileWriter): Unit = {
+    writer.writeInt(codec.getValue)
+  }
+
+  override protected def serializeFooter(
+      nullKeyRowCount: Int,
+      nodes: Seq[BTreeNodeMetaData]): Array[Byte] = {
     val buffer = new ByteArrayOutputStream()
     val keyBuffer = new ByteArrayOutputStream()
     val statsBuffer = new ByteArrayOutputStream()
 
     // Index File Version Number
-    IndexUtils.writeInt(buffer, IndexFile.VERSION_NUM)
+    IndexUtils.writeInt(buffer, VERSION_NUM)
     // Record Count(all with non-null key) of all nodes in B+ tree
     IndexUtils.writeInt(buffer, nodes.map(_.rowCount).sum)
     // Count of Record(s) that have null key
     IndexUtils.writeInt(buffer, nullKeyRowCount)
     // Row Id List Partition Count
-    IndexUtils.writeInt(buffer, rowIdListPartLengthSeq.length)
+    IndexUtils.writeInt(buffer, rowIdListPartLengthArray.length)
     // Row Id List Partition Size
     IndexUtils.writeInt(buffer, rowIdListSizePerSection)
     // Child Count
     IndexUtils.writeInt(buffer, nodes.size)
 
     var offset = 0
-    rowIdListPartLengthSeq.foreach { rowIdListPartLength =>
+    rowIdListPartLengthArray.foreach { rowIdListPartLength =>
       // Start Pos for each Row Id List Part
       IndexUtils.writeInt(buffer, offset)
       // Length for each Row Id List Part
@@ -319,14 +97,6 @@ private[index] case class BTreeIndexRecordWriterV2(
     // the return of write should be equal to statsBuffer.size
     statisticsManager.write(statsBuffer)
     IndexUtils.writeInt(buffer, statsBuffer.size)
-    IndexUtils.compressIndexData(
-      compressor,
-      buffer.toByteArray ++ statsBuffer.toByteArray ++ keyBuffer.toByteArray)
+    buffer.toByteArray ++ statsBuffer.toByteArray ++ keyBuffer.toByteArray
   }
-
-  private[index] case class BTreeNodeMetaData(
-      rowCount: Int,
-      byteSize: Int,
-      min: InternalRow,
-      max: InternalRow)
 }

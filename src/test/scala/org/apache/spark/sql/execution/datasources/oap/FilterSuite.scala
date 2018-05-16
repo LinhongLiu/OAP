@@ -134,7 +134,7 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
   }
 
   test("filtering") {
-    val rowRDD = spark.sparkContext.parallelize(1 to 300, 1).map { i =>
+    val rowRDD = spark.sparkContext.parallelize(1 to 300, 2).map { i =>
       Seq(i, s"this is test $i")
     }.map(Row.fromSeq)
     val schema =

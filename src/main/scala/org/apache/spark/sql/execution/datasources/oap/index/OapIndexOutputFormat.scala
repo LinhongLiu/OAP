@@ -25,7 +25,6 @@ import org.apache.parquet.hadoop.util.ContextUtil
 
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.OapException
-import org.apache.spark.sql.execution.datasources.oap.OapFileFormat
 import org.apache.spark.sql.execution.datasources.oap.index.OapIndexProperties.IndexVersion
 import org.apache.spark.sql.internal.oap.OapConf
 import org.apache.spark.sql.types.StructType
@@ -37,7 +36,9 @@ private[index] class OapIndexOutputFormat extends FileOutputFormat[Void, Interna
   private def getCodec(taskAttemptContext: TaskAttemptContext): CompressionCodec = {
     val configuration = ContextUtil.getConfiguration(taskAttemptContext)
     CompressionCodec.valueOf(
-      configuration.get(OapFileFormat.COMPRESSION, OapFileFormat.DEFAULT_COMPRESSION))
+      configuration.get(
+        OapConf.OAP_INDEX_BTREE_COMPRESSION.key,
+        OapConf.OAP_INDEX_BTREE_COMPRESSION.defaultValueString).toUpperCase)
   }
 
   private def getWriterVersion(taskAttemptContext: TaskAttemptContext) = {
