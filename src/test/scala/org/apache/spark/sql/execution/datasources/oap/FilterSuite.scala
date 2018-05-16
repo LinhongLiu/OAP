@@ -134,14 +134,8 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
   }
 
   test("filtering") {
-    val rowRDD = spark.sparkContext.parallelize(1 to 300, 2).map { i =>
-      Seq(i, s"this is test $i")
-    }.map(Row.fromSeq)
-    val schema =
-      StructType(StructField("a", IntegerType) :: StructField("c", StringType) :: Nil)
-    val df = spark.createDataFrame(rowRDD, schema)
-    df.createOrReplaceTempView("t")
-
+    val data: Seq[(Int, String)] = (1 to 300).map { i => (i, s"this is test $i") }
+    data.toDF("key", "value").createOrReplaceTempView("t")
     sql("insert overwrite table oap_test select * from t")
     withIndex(TestIndex("oap_test", "index1")) {
       sql("create oindex index1 on oap_test (a)")

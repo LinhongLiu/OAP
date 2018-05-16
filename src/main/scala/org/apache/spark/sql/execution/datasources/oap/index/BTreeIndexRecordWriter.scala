@@ -28,7 +28,7 @@ import org.apache.parquet.format.CompressionCodec
 
 import org.apache.spark.{Aggregator, TaskContext}
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.{Ascending, BoundReference, Descending, FromUnsafeProjection, SortOrder}
+import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
 import org.apache.spark.sql.execution.datasources.OapException
 import org.apache.spark.sql.execution.datasources.oap.index.OapIndexProperties.IndexVersion
@@ -39,7 +39,6 @@ import org.apache.spark.sql.execution.datasources.oap.utils.{BTreeNode, BTreeUti
 import org.apache.spark.sql.internal.oap.OapConf
 import org.apache.spark.sql.types._
 import org.apache.spark.util.collection.{BitSet, OapExternalSorter}
-
 
 private[index] object BTreeIndexRecordWriter {
   def apply(

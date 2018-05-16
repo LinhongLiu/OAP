@@ -60,8 +60,8 @@ class BTreeIndexScannerSuite extends SharedOapContext {
     // Only check Integer is enough. We use [[GenerateOrdering]] to handle different data types.
     val fields = StructField("col1", IntegerType) :: StructField("col2", IntegerType) :: Nil
     val singleColumnReader =
-      BTreeIndexRecordReaderV1(configuration, StructType(fields.take(1)), null)
-    val multiColumnReader = BTreeIndexRecordReaderV1(configuration, StructType(fields), null)
+      BTreeIndexRecordReaderV2(configuration, StructType(fields.take(1)), null)
+    val multiColumnReader = BTreeIndexRecordReaderV2(configuration, StructType(fields), null)
     // Compare DUMMY_START
     val x1 = IndexScanner.DUMMY_KEY_START
     val y1 = InternalRow(Int.MinValue)
@@ -132,14 +132,14 @@ class BTreeIndexScannerSuite extends SharedOapContext {
     val schema = StructType(StructField("col", IntegerType) :: Nil)
     val path = new Path(Utils.createTempDir().getAbsolutePath, "tempIndexFile")
     val fileWriter = IndexFileWriterImpl(configuration, path)
-    val writer = BTreeIndexRecordWriterV1(configuration, fileWriter, schema)
+    val writer = BTreeIndexRecordWriterV2(configuration, fileWriter, schema)
     // Values structure depends on BTreeUtils.generate2()
     // Count = 150, node = 5, (1 - 59), (61 - 119), (121 - 179), (181 - 239) (241 - 299)
     (1 to 300 by 2).map(InternalRow(_)).foreach(writer.write(null, _))
     writer.close(null)
 
     val reader =
-      BTreeIndexRecordReader(configuration, schema, path).asInstanceOf[BTreeIndexRecordReaderV1]
+      BTreeIndexRecordReader(configuration, schema, path).asInstanceOf[BTreeIndexRecordReaderV2]
     reader.initialize(path, new ArrayBuffer[RangeInterval]())
 
     // DUMMY_START <= x <= DUMMY_END
@@ -181,13 +181,13 @@ class BTreeIndexScannerSuite extends SharedOapContext {
     val schema = StructType(StructField("col", IntegerType) :: Nil)
     val path = new Path(Utils.createTempDir().getAbsolutePath, "tempIndexFile")
     val fileWriter = IndexFileWriterImpl(configuration, path)
-    val writer = BTreeIndexRecordWriterV1(configuration, fileWriter, schema)
+    val writer = BTreeIndexRecordWriterV2(configuration, fileWriter, schema)
 
     (1 to 300 by 2).map(InternalRow(_)).foreach(writer.write(null, _))
     writer.close(null)
 
     val reader =
-      BTreeIndexRecordReader(configuration, schema, path).asInstanceOf[BTreeIndexRecordReaderV1]
+      BTreeIndexRecordReader(configuration, schema, path).asInstanceOf[BTreeIndexRecordReaderV2]
     reader.initialize(path, new ArrayBuffer[RangeInterval]())
 
     assert(
@@ -206,14 +206,14 @@ class BTreeIndexScannerSuite extends SharedOapContext {
     val schema = StructType(StructField("col", IntegerType) :: Nil)
     val path = new Path(Utils.createTempDir().getAbsolutePath, "tempIndexFile")
     val fileWriter = IndexFileWriterImpl(configuration, path)
-    val writer = BTreeIndexRecordWriterV1(configuration, fileWriter, schema)
+    val writer = BTreeIndexRecordWriterV2(configuration, fileWriter, schema)
 
     (1 to 300 by 2).map(InternalRow(_)).foreach(writer.write(null, _))
     (1 to 5).map(_ => InternalRow(null)).foreach(writer.write(null, _))
     writer.close(null)
 
     val reader =
-      BTreeIndexRecordReader(configuration, schema, path).asInstanceOf[BTreeIndexRecordReaderV1]
+      BTreeIndexRecordReader(configuration, schema, path).asInstanceOf[BTreeIndexRecordReaderV2]
     reader.initialize(path, new ArrayBuffer[RangeInterval]())
 
     assert(
@@ -232,13 +232,13 @@ class BTreeIndexScannerSuite extends SharedOapContext {
     val schema = StructType(StructField("col", IntegerType) :: Nil)
     val path = new Path(Utils.createTempDir().getAbsolutePath, "tempIndexFile")
     val fileWriter = IndexFileWriterImpl(configuration, path)
-    val writer = BTreeIndexRecordWriterV1(configuration, fileWriter, schema)
+    val writer = BTreeIndexRecordWriterV2(configuration, fileWriter, schema)
 
     (1 to 5).map(_ => InternalRow(null)).foreach(writer.write(null, _))
     writer.close(null)
 
     val reader =
-      BTreeIndexRecordReader(configuration, schema, path).asInstanceOf[BTreeIndexRecordReaderV1]
+      BTreeIndexRecordReader(configuration, schema, path).asInstanceOf[BTreeIndexRecordReaderV2]
     reader.initialize(path, new ArrayBuffer[RangeInterval]())
 
     assert(
@@ -255,14 +255,14 @@ class BTreeIndexScannerSuite extends SharedOapContext {
     val schema = StructType(StructField("col", IntegerType) :: Nil)
     val path = new Path(Utils.createTempDir().getAbsolutePath, "tempIndexFile")
     val fileWriter = IndexFileWriterImpl(configuration, path)
-    val writer = BTreeIndexRecordWriterV1(configuration, fileWriter, schema)
+    val writer = BTreeIndexRecordWriterV2(configuration, fileWriter, schema)
 
     (1 to 300 by 2).map(InternalRow(_)).foreach(writer.write(null, _))
     (1 to 5).map(_ => InternalRow(null)).foreach(writer.write(null, _))
     writer.close(null)
 
     val reader =
-      BTreeIndexRecordReader(configuration, schema, path).asInstanceOf[BTreeIndexRecordReaderV1]
+      BTreeIndexRecordReader(configuration, schema, path).asInstanceOf[BTreeIndexRecordReaderV2]
     reader.initialize(path, new ArrayBuffer[RangeInterval]())
 
     assert(
