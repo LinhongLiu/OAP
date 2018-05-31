@@ -81,9 +81,11 @@ private[oap] class SampleBasedStatisticsWriter(schema: StructType, conf: Configu
   lazy val sampleRate: Double = conf.getDouble(
     OapConf.OAP_STATISTICS_SAMPLE_RATE.key, OapConf.OAP_STATISTICS_SAMPLE_RATE.defaultValue.get)
 
-  protected var sampleArray: Array[Key] = _
+  private val minSampleSize = conf.getInt(
+    OapConf.OAP_STATISTICS_SAMPLE_MIN_SIZE.key,
+    OapConf.OAP_STATISTICS_SAMPLE_MIN_SIZE.defaultValue.get)
 
-  private val minSampleSize = 24
+  protected var sampleArray: Array[Key] = _
 
   // SampleBasedStatistics file structure
   // statistics_id        4 Bytes, Int, specify the [[Statistic]] type
