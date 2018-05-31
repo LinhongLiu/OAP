@@ -83,6 +83,8 @@ private[oap] class SampleBasedStatisticsWriter(schema: StructType, conf: Configu
 
   protected var sampleArray: Array[Key] = _
 
+  private val minSampleSize = 24
+
   // SampleBasedStatistics file structure
   // statistics_id        4 Bytes, Int, specify the [[Statistic]] type
   // sample_size          4 Bytes, Int, number of UnsafeRow
@@ -94,7 +96,7 @@ private[oap] class SampleBasedStatisticsWriter(schema: StructType, conf: Configu
   // | unsafeRow-(sample_size) sizeInBytes | unsafeRow-(sample_size) content |
   override def write(writer: OutputStream, sortedKeys: ArrayBuffer[Key]): Int = {
     var offset = super.write(writer, sortedKeys)
-    val size = (sortedKeys.size * sampleRate).toInt
+    val size = math.max((sortedKeys.size * sampleRate).toInt, minSampleSize)
     sampleArray = takeSample(sortedKeys, size)
 
     IndexUtils.writeInt(writer, size)
