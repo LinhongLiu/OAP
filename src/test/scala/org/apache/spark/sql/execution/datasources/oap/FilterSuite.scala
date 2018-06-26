@@ -17,19 +17,26 @@
 
 package org.apache.spark.sql.execution.datasources.oap
 
+import java.io.ByteArrayOutputStream
 import java.sql.Date
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
+import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
 import org.scalatest.BeforeAndAfterEach
-
 import org.apache.spark.sql.{QueryTest, Row}
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
+import org.apache.spark.sql.execution.datasources.oap.statistics.{SampleStatisticsReader, SampleStatisticsWriter}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.internal.oap.OapConf
+import org.apache.spark.sql.oap.OapRuntime
 import org.apache.spark.sql.test.oap.{SharedOapContext, TestIndex, TestPartition}
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
 import org.apache.spark.util.Utils
+
+import scala.collection.mutable.ArrayBuffer
+import scala.util.Random
 
 class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEach {
 
@@ -1045,5 +1052,25 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
           Row(1, "this is test 1"):: Nil)
       }
     }
+  }
+
+  test("test") {
+    val schema = StructType(StructField("a", IntegerType) :: Nil)
+    val configuration = new Configuration()
+    val ordering = GenerateOrdering.create(schema)
+    val stat = new SampleStatisticsWriter(schema, configuration)
+    val writer = new ByteArrayOutputStream()
+    val random = new Random(0)
+    val keys = new ArrayBuffer[InternalRow]()
+    (0 until 1000).foreach(_ => keys.append(InternalRow.fromSeq(random.nextInt(100) :: Nil)))
+    val sortedKeys = keys.sortWith((l, r) => ordering.compare(l, r) < 0)
+
+    stat.write(writer, sortedKeys)
+    val bytes = writer.toByteArray
+
+    val fiberCache = OapRuntime.getOrCreate.memoryManager.toDataFiberCache(bytes)
+
+    val statReader = new SampleStatisticsReader(schema)
+    statReader.read(fiberCache, 0)
   }
 }
