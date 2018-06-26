@@ -20,12 +20,16 @@ package org.apache.spark.sql.execution.datasources.oap
 import java.io.ByteArrayOutputStream
 import java.sql.Date
 
+import scala.collection.mutable.ArrayBuffer
+import scala.util.Random
+
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
+import org.scalatest.BeforeAndAfterEach
+
+import org.apache.spark.sql.{QueryTest, Row}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
-import org.scalatest.BeforeAndAfterEach
-import org.apache.spark.sql.{QueryTest, Row}
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.execution.datasources.oap.statistics.{SampleStatisticsReader, SampleStatisticsWriter}
 import org.apache.spark.sql.internal.SQLConf
@@ -35,8 +39,6 @@ import org.apache.spark.sql.test.oap.{SharedOapContext, TestIndex, TestPartition
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
 import org.apache.spark.util.Utils
 
-import scala.collection.mutable.ArrayBuffer
-import scala.util.Random
 
 class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEach {
 
