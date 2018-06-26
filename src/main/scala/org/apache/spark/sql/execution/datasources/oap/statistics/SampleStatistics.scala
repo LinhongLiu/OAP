@@ -21,12 +21,14 @@ import java.io.{ByteArrayOutputStream, OutputStream}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+
 import org.apache.hadoop.conf.Configuration
+
+import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
 import org.apache.spark.sql.execution.datasources.oap.Key
+import org.apache.spark.sql.execution.datasources.oap.filecache.FiberCache
 import org.apache.spark.sql.execution.datasources.oap.index.{IndexUtils, RangeInterval}
 import org.apache.spark.sql.types.StructType
-import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
-import org.apache.spark.sql.execution.datasources.oap.filecache.FiberCache
 
 private[oap] case class Sample(key: Key, nEq: Int, nLt: Int, nDlt: Int, isPeriodic: Boolean) {
 
