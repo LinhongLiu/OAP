@@ -40,13 +40,16 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
 
   override val id: Int = StatisticsType.TYPE_SAMPLE
   protected var sampleArray: Array[Sample] = _
+  protected var rowCount: Int = 0
+  protected var avgEq: Int = 0
   override def read(fiberCache: FiberCache, offset: Int): Int = {
     var readOffset = super.read(fiberCache, offset) + offset
 
-    val size = fiberCache.getInt(readOffset)
+    rowCount = fiberCache.getInt(readOffset)
+    val size = fiberCache.getInt(readOffset + 4)
 
     sampleArray = new Array[Sample](size)
-    readOffset += 4
+    readOffset += 8
     var rowOffset = 0
     for (i <- 0 until size) {
       val start = readOffset + size * IndexUtils.INT_SIZE + rowOffset
@@ -59,12 +62,44 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
 
       rowOffset = fiberCache.getInt(readOffset + i * IndexUtils.INT_SIZE)
     }
+    avgEq = sampleArray.map(_.nEq).sum / sampleArray.length
 
     readOffset += (rowOffset + size * IndexUtils.INT_SIZE)
     readOffset - offset
   }
 
   private val ordering = GenerateOrdering.create(schema)
+
+  // Return first greater or equal sample index, nLt, nEq for the key
+  private def estimateKey(key: Key): (Int, Int, Int) = {
+    var iSample = sampleArray.length
+    var iMin = 0
+    var iLower = 0
+    var iUpper = 0
+    var res = 0
+    do {
+      val iTest = (iMin + iSample) / 2
+      res = ordering.compare(sampleArray(iTest).key, key)
+      if (res < 0) {
+        iLower = sampleArray(iTest).nLt + sampleArray(iTest).nEq
+        iMin = iTest + 1
+      } else {
+        iSample = iTest
+      }
+    } while (res != 0 && iMin < iSample)
+
+    if (res == 0) {
+      (iSample, sampleArray(iSample).nLt, sampleArray(iSample).nEq)
+    } else {
+      if (iSample >= sampleArray.length) {
+        iUpper = rowCount
+      } else {
+        iUpper = sampleArray(iSample).nLt
+      }
+      val iGap = if (iLower >= iUpper) 0 else iUpper - iLower
+      (iSample, iLower + iGap / 3, avgEq)
+    }
+  }
 
   private def estimateLines(key: Key): Int = {
     val sampleOption = sampleArray.find(sample => ordering.compare(sample.key, key) >= 0)
@@ -83,18 +118,36 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
     lowerLines + (if (upperLines > lowerLines) (upperLines - lowerLines) / 3 else 0)
   }
 
+  private def analyseInterval(interval: RangeInterval): Int = {
+    if (ordering.compare(interval.start, interval.end) == 0
+        && interval.startInclude && interval.endInclude) {
+      // Equal
+      val nEq = estimateKey(interval.start)._3
+      nEq
+    } else {
+      // Range
+      assert(ordering.compare(interval.start, interval.end) < 0)
+      var iLower = 0
+      var iUpper = rowCount
+      val (iLowerIdx, iLowerLt, iLowerEq) = estimateKey(interval.start)
+      val (iUpperIdx, iUpperLt, iUpperEq) = estimateKey(interval.end)
+      if (iLower < iLowerLt + iLowerEq) iLower = iLowerLt + iLowerEq
+      if (iUpper > iUpperLt + iLowerEq) iUpper = iUpperLt + iUpperEq
+      if (iUpper > iLower) {
+        iUpper - iLower
+      } else {
+        2
+      }
+    }
+  }
+
   override def analyse(intervalArray: ArrayBuffer[RangeInterval]): StatsAnalysisResult = {
-    if (sampleArray == null || sampleArray.isEmpty) {
+    val hitCount = intervalArray.map(interval => analyseInterval(interval)).sum
+    val hitRate = hitCount.toDouble / rowCount
+    if (hitRate < 0.01) {
       StatsAnalysisResult.USE_INDEX
     } else {
-      val linesForStart = estimateLines(intervalArray.head.start)
-      val linesForEnd = estimateLines(intervalArray.last.end)
-      val totalLines = sampleArray.last.nLt + sampleArray.last.nEq
-      if ((linesForEnd - linesForStart) / totalLines.toDouble > 0.01) {
-        StatsAnalysisResult.USE_INDEX
-      } else {
-        StatsAnalysisResult.FULL_SCAN
-      }
+      StatsAnalysisResult.FULL_SCAN
     }
   }
 }
@@ -154,6 +207,7 @@ private[oap] class SampleStatisticsWriter(
     val finalSamples = samples.dequeueAll.sortWith((l, r) => ordering.compare(l.key, r.key) < 0)
 
     var offset = super.write(writer, sortedKeys)
+    IndexUtils.writeInt(writer, rowCount)
     IndexUtils.writeInt(writer, finalSamples.length)
     val tempWriter = new ByteArrayOutputStream()
     finalSamples.foreach { s =>

@@ -22,15 +22,14 @@ import java.sql.Date
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
-
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.scalatest.BeforeAndAfterEach
-
 import org.apache.spark.sql.{QueryTest, Row}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
+import org.apache.spark.sql.execution.datasources.oap.index.RangeInterval
 import org.apache.spark.sql.execution.datasources.oap.statistics.{SampleStatisticsReader, SampleStatisticsWriter}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.internal.oap.OapConf
@@ -1074,5 +1073,12 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
 
     val statReader = new SampleStatisticsReader(schema)
     statReader.read(fiberCache, 0)
+    (0 until 100).foreach { i =>
+      val interval = RangeInterval(s = InternalRow.fromSeq(i :: Nil),
+        e = InternalRow.fromSeq(i :: Nil), includeStart = true, includeEnd = true)
+      val intervals = new ArrayBuffer[RangeInterval]()
+      intervals.append(interval)
+      statReader.analyse(intervals)
+    }
   }
 }
