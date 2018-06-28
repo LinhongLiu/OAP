@@ -69,6 +69,7 @@ private[oap] class SampleBasedStatisticsReader(
           hitCnt += 1
         }
       }
+      println(s"Sample hit count: $hitCnt")
       StatsAnalysisResult(hitCnt * 1.0 / sampleArray.length)
     }
   }

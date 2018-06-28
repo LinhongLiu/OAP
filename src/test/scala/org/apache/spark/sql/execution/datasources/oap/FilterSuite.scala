@@ -30,13 +30,15 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.execution.datasources.oap.index.RangeInterval
-import org.apache.spark.sql.execution.datasources.oap.statistics.{SampleStatisticsReader, SampleStatisticsWriter}
+import org.apache.spark.sql.execution.datasources.oap.statistics._
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.internal.oap.OapConf
 import org.apache.spark.sql.oap.OapRuntime
 import org.apache.spark.sql.test.oap.{SharedOapContext, TestIndex, TestPartition}
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
 import org.apache.spark.util.Utils
+
+import scala.collection.JavaConverters._
 
 
 class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEach {
@@ -1056,29 +1058,65 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
   }
 
   test("test") {
+
+    def testStat(
+        statReader: StatisticsReader,
+        statWriter: StatisticsWriter,
+        sortedKeys: ArrayBuffer[Key],
+        intervalArray: ArrayBuffer[RangeInterval]): Unit = {
+
+      val writer = new ByteArrayOutputStream()
+      statWriter.write(writer, sortedKeys)
+      val bytes = writer.toByteArray
+
+      val fiberCache = OapRuntime.getOrCreate.memoryManager.toDataFiberCache(bytes)
+      statReader.read(fiberCache, 0)
+      statReader.analyse(intervalArray)
+    }
+
+    def intervalList(): Seq[ArrayBuffer[RangeInterval]] = {
+      (0 until 100).map { i =>
+        val interval = RangeInterval(s = InternalRow.fromSeq(i :: Nil),
+          e = InternalRow.fromSeq(i :: Nil), includeStart = true, includeEnd = true)
+        val intervals = new ArrayBuffer[RangeInterval]()
+        intervals.append(interval)
+        intervals
+      }
+    }
+
+    def keyList(schema: StructType): Seq[ArrayBuffer[Key]] = {
+
+      val ordering = GenerateOrdering.create(schema)
+      val random = new Random(0)
+      val keys = new ArrayBuffer[InternalRow]()
+      (0 until 1000).foreach(_ => keys.append(InternalRow.fromSeq(random.nextInt(100) :: Nil)))
+      val sortedKeys = keys.sortWith((l, r) => ordering.compare(l, r) < 0)
+      sortedKeys :: Nil
+    }
+
+    def statList(
+        schema: StructType,
+        configuration: Configuration): Seq[(StatisticsReader, StatisticsWriter)] = {
+
+      Seq(
+        (new SampleStatisticsReader(schema),
+            new SampleStatisticsWriter(schema, configuration)),
+        (new SampleBasedStatisticsReader(schema),
+            new SampleBasedStatisticsWriter(schema, configuration)),
+        (new PartByValueStatisticsReader(schema),
+            new PartByValueStatisticsWriter(schema, configuration)))
+    }
+
     val schema = StructType(StructField("a", IntegerType) :: Nil)
     val configuration = new Configuration()
-    val ordering = GenerateOrdering.create(schema)
-    val stat = new SampleStatisticsWriter(schema, configuration)
-    val writer = new ByteArrayOutputStream()
-    val random = new Random(0)
-    val keys = new ArrayBuffer[InternalRow]()
-    (0 until 1000).foreach(_ => keys.append(InternalRow.fromSeq(random.nextInt(100) :: Nil)))
-    val sortedKeys = keys.sortWith((l, r) => ordering.compare(l, r) < 0)
 
-    stat.write(writer, sortedKeys)
-    val bytes = writer.toByteArray
-
-    val fiberCache = OapRuntime.getOrCreate.memoryManager.toDataFiberCache(bytes)
-
-    val statReader = new SampleStatisticsReader(schema)
-    statReader.read(fiberCache, 0)
-    (0 until 100).foreach { i =>
-      val interval = RangeInterval(s = InternalRow.fromSeq(i :: Nil),
-        e = InternalRow.fromSeq(i :: Nil), includeStart = true, includeEnd = true)
-      val intervals = new ArrayBuffer[RangeInterval]()
-      intervals.append(interval)
-      statReader.analyse(intervals)
+    keyList(schema).foreach { keys =>
+      intervalList().foreach { intervalArray =>
+        statList(schema, configuration).foreach {
+          case (statReader, statWriter) => testStat(statReader, statWriter, keys, intervalArray)
+        }
+      }
     }
+
   }
 }

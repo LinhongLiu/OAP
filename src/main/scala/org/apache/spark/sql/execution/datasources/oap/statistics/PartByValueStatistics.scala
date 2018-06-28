@@ -139,6 +139,7 @@ private[oap] class PartByValueStatisticsReader(schema: StructType)
         } else if (cover < 0) {
           StatsAnalysisResult.USE_INDEX
         } else {
+          println(s"partbyvalue hitcount: $cover")
           StatsAnalysisResult(cover / wholeCount)
         }
       }
