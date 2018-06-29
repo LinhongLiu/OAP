@@ -1057,6 +1057,7 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
     }
   }
 
+  // scalastyle:off println
   test("test") {
 
     def testStat(
@@ -1078,6 +1079,26 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
       (0 until 100).map { i =>
         val interval = RangeInterval(s = InternalRow.fromSeq(i :: Nil),
           e = InternalRow.fromSeq(i :: Nil), includeStart = true, includeEnd = true)
+        val intervals = new ArrayBuffer[RangeInterval]()
+        intervals.append(interval)
+        intervals
+      }
+    }
+
+    def randomIntervalList(): Seq[ArrayBuffer[RangeInterval]] = {
+      val random = new Random(1)
+      (0 until 100).map { _ =>
+        // Range [-100, 200]
+        val v1 = random.nextInt(300) - 100
+        val v2 = random.nextInt(300) - 100
+        val (start, end) = if (v1 < v2) (v1, v2) else (v2, v1)
+        val (startInclude, endInclude) = if (v1 == v2) {
+          (true, true)
+        } else {
+          (random.nextBoolean(), random.nextBoolean())
+        }
+        val interval = RangeInterval(s = InternalRow.fromSeq(start :: Nil),
+          e = InternalRow.fromSeq(end :: Nil), includeStart = startInclude, includeEnd = endInclude)
         val intervals = new ArrayBuffer[RangeInterval]()
         intervals.append(interval)
         intervals
@@ -1107,14 +1128,37 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
             new PartByValueStatisticsWriter(schema, configuration)))
     }
 
+    def intervalString(interval: RangeInterval): String = {
+      val s = (if (interval.startInclude) "[" else "(") +
+          interval.start.getInt(0) + "," + interval.end.getInt(0) +
+          (if (interval.endInclude) "]" else ")")
+      s + " " * (10 - s.length)
+    }
+
+    def intervalHit(interval: RangeInterval, keys: ArrayBuffer[Key]): Int = {
+      keys.count { key =>
+        val a = key.getInt(0) > interval.start.getInt(0) && key.getInt(0) < interval.end.getInt(0)
+        val b = interval.startInclude && interval.start.getInt(0) == key.getInt(0)
+        val c = interval.endInclude && interval.end.getInt(0) == key.getInt(0)
+        a || b || c
+      }
+
+    }
+
     val schema = StructType(StructField("a", IntegerType) :: Nil)
     val configuration = new Configuration()
 
+    println("interval\treal\tsqlite\tsample\tpartbyvalue")
+
     keyList(schema).foreach { keys =>
-      intervalList().foreach { intervalArray =>
+      // intervalList().foreach { intervalArray =>
+      randomIntervalList().foreach { intervalArray =>
+        print(intervalString(intervalArray.head))
+        print("\t" + "%4d".format(intervalHit(intervalArray.head, keys)))
         statList(schema, configuration).foreach {
           case (statReader, statWriter) => testStat(statReader, statWriter, keys, intervalArray)
         }
+        println("")
       }
     }
 

@@ -143,7 +143,7 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
 
   override def analyse(intervalArray: ArrayBuffer[RangeInterval]): StatsAnalysisResult = {
     val hitCount = intervalArray.map(interval => analyseInterval(interval)).sum
-    println(s"Sqlite hit count: $hitCount")
+    print("\t%4d".format(hitCount))
     val hitRate = hitCount.toDouble / rowCount
     if (hitRate < 0.01) {
       StatsAnalysisResult.USE_INDEX
