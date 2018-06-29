@@ -22,9 +22,11 @@ import java.sql.Date
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
+
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.scalatest.BeforeAndAfterEach
+
 import org.apache.spark.sql.{QueryTest, Row}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
@@ -37,9 +39,6 @@ import org.apache.spark.sql.oap.OapRuntime
 import org.apache.spark.sql.test.oap.{SharedOapContext, TestIndex, TestPartition}
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
 import org.apache.spark.util.Utils
-
-import scala.collection.JavaConverters._
-
 
 class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEach {
 
