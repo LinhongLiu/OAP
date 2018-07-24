@@ -44,9 +44,35 @@ private[oap] case class Sample(key: Key, nEq: Int, nLt: Int, nDlt: Int, isPeriod
 private[oap] class SampleStatisticsReader(schema: StructType) extends StatisticsReader(schema) {
   override val id: Int = StatisticsType.TYPE_SQLITE_SAMPLE
 
+  protected var sampleArray: Array[Sample] = _
+  protected var rowCount: Int = 0
+  protected var avgEq: Int = 0
+
   override def read(fiberCache: FiberCache, offset: Int): Int = {
-    0
+    var readOffset = super.read(fiberCache, offset) + offset
+
+    rowCount = fiberCache.getInt(readOffset)
+    val size = fiberCache.getInt(readOffset + 4)
+
+    sampleArray = new Array[Sample](size)
+    readOffset += 8
+    var rowOffset = 0
+    for (i <- 0 until size) {
+      val start = readOffset + size * IndexUtils.INT_SIZE + rowOffset
+      val (key, length) = nnkr.readKey(fiberCache, start)
+      val nEq = fiberCache.getInt(start + length)
+      val nLt = fiberCache.getInt(start + length + IndexUtils.INT_SIZE)
+      val nDLt = fiberCache.getInt(start + length + IndexUtils.INT_SIZE * 2)
+      sampleArray(i) = Sample(key, nEq, nLt, nDLt, isPeriodic = false)
+
+      rowOffset = fiberCache.getInt(readOffset + i * IndexUtils.INT_SIZE)
+    }
+    avgEq = sampleArray.map(_.nEq).sum / sampleArray.length
+
+    readOffset += (rowOffset + size * IndexUtils.INT_SIZE)
+    readOffset - offset
   }
+
   override def analyse(intervalArray: ArrayBuffer[RangeInterval]): StatsAnalysisResult = {
     StatsAnalysisResult.USE_INDEX
   }
