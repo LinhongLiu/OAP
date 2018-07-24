@@ -37,9 +37,9 @@ import org.apache.spark.sql.types.StructType
  * nDlt: the number of distinct rows less than the sample row
  * Sample size is 1% of the total rows.
  * 1/3 of samples is selected from the rows evenly. called periodic sample
- * 2/3 of samples is the ones with greatest nEq. called "better" sample
+ * 2/3 of samples is the ones with greatest nEq. called normal sample
  */
-private[oap] case class Sample(key: Key, nEq: Int, nLt: Int, nDlt: Int, isPeriodic: Boolean)
+private[oap] case class Sample(key: Key, nEq: Int, nLt: Int, nDLt: Int, isPeriodic: Boolean)
 
 private[oap] class SampleStatisticsReader(schema: StructType) extends StatisticsReader(schema) {
   override val id: Int = StatisticsType.TYPE_SQLITE_SAMPLE
@@ -76,6 +76,62 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
   override def analyse(intervalArray: ArrayBuffer[RangeInterval]): StatsAnalysisResult = {
     StatsAnalysisResult.USE_INDEX
   }
+
+  // Return the first greater or equal sample index, nLt, nEq for the key
+  private def estimateKey(key: Key): (Int, Int, Int) = {
+    val ordering = GenerateOrdering.create(schema)
+    var iSample = sampleArray.length
+    var iMin = 0
+    var iLower = 0
+    var iUpper = 0
+    var res = 0
+    do {
+      val iTest = (iMin + iSample) / 2
+      res = ordering.compare(sampleArray(iTest).key, key)
+      if (res < 0) {
+        iLower = sampleArray(iTest).nLt + sampleArray(iTest).nEq
+        iMin = iTest + 1
+      } else {
+        iSample = iTest
+      }
+    } while (res != 0 && iMin < iSample)
+
+    if (res == 0) {
+      (iSample, sampleArray(iSample).nLt, sampleArray(iSample).nEq)
+    } else {
+      if (iSample >= sampleArray.length) {
+        iUpper = rowCount
+      } else {
+        iUpper = sampleArray(iSample).nLt
+      }
+      val iGap = if (iLower >= iUpper) 0 else iUpper - iLower
+      (iSample, iLower + iGap / 3, avgEq)
+    }
+  }
+
+  private def analyseInterval(interval: RangeInterval): Int = {
+    val ordering = GenerateOrdering.create(schema)
+    if (ordering.compare(interval.start, interval.end) == 0
+      && interval.startInclude && interval.endInclude) {
+        // Equal
+        val nEq = estimateKey(interval.start)._3
+        nEq
+    } else {
+      // Range
+      assert(ordering.compare(interval.start, interval.end) < 0)
+      var iLower = 0
+      var iUpper = rowCount
+      val (iLowerIdx, iLowerLt, iLowerEq) = estimateKey(interval.start)
+      val (iUpperIdx, iUpperLt, iUpperEq) = estimateKey(interval.end)
+      if (iLower < iLowerLt + iLowerEq) iLower = iLowerLt + iLowerEq
+      if (iUpper > iUpperLt + iLowerEq) iUpper = iUpperLt + iUpperEq
+      if (iUpper > iLower) {
+        iUpper - iLower
+      } else {
+        2
+      }
+    }
+  }
 }
 
 private[oap] class SampleStatisticsWriter(
@@ -92,12 +148,9 @@ private[oap] class SampleStatisticsWriter(
   override def write(writer: OutputStream, sortedKeys: ArrayBuffer[Key]): Int = {
 
     val rowCount = sortedKeys.length
-    // Sample size is 1% of rowCount. at least 24 sample in case too small row count.
+    // Sample size is 1% of rowCount. at least 24 samples in case too small row count.
     val mxSample = math.max(MIN_SAMPLE, (rowCount * SAMPLE_RATIO + 1).toInt)
-
-
     sampleArray = takeSample(sortedKeys, mxSample)
-
 
     var offset = super.write(writer, sortedKeys)
     IndexUtils.writeInt(writer, rowCount)
@@ -107,7 +160,7 @@ private[oap] class SampleStatisticsWriter(
       nnkw.writeKey(tempWriter, s.key)
       IndexUtils.writeInt(tempWriter, s.nEq)
       IndexUtils.writeInt(tempWriter, s.nLt)
-      IndexUtils.writeInt(tempWriter, s.nDlt)
+      IndexUtils.writeInt(tempWriter, s.nDLt)
       IndexUtils.writeInt(writer, tempWriter.size())
     }
     offset += sampleArray.length * IndexUtils.INT_SIZE
@@ -126,7 +179,6 @@ private[oap] class SampleStatisticsWriter(
     // Periodic sample divisor
     val nPSample = keys.length / (mxSample / 3 + 1) + 1
 
-    // Handle the first row
     implicit val ord: Ordering[Sample] = Ordering[(Boolean, Int)].on(s => (!s.isPeriodic, -s.nEq))
     val samples = new mutable.PriorityQueue[Sample]()
 
