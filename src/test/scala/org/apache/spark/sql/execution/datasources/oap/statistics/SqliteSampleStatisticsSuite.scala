@@ -21,10 +21,10 @@ import java.io.ByteArrayOutputStream
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
-
 import org.apache.hadoop.conf.Configuration
-
-import org.apache.spark.sql.execution.datasources.oap.index.IndexUtils
+import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.expressions.JoinedRow
+import org.apache.spark.sql.execution.datasources.oap.index.{IndexScanner, IndexUtils}
 import org.apache.spark.sql.types.StructType
 
 class SqliteSampleStatisticsSuite extends StatisticsTest {
@@ -128,6 +128,50 @@ class SqliteSampleStatisticsSuite extends StatisticsTest {
   }
 
   test("test analyze function") {
+    val keys = (0 until 3000).map(_ => rowGen(Random.nextInt(300))).sortBy(_.getInt(0))
+    val dummyStart = new JoinedRow(InternalRow(1), IndexScanner.DUMMY_KEY_START)
+    val dummyEnd = new JoinedRow(InternalRow(300), IndexScanner.DUMMY_KEY_END)
 
+    val sampleWrite = new TestSqliteSampleWriter(schema)
+    sampleWrite.write(out, keys.to[ArrayBuffer])
+
+    val fiber = wrapToFiberCache(out)
+
+    val sampleRead = new TestSqliteSampleReader(schema)
+    sampleRead.read(fiber, 0)
+
+    generateInterval(rowGen(-10), rowGen(-1), startInclude = true, endInclude = true)
+    assert(sampleRead.analyse(intervalArray) == StatsAnalysisResult.USE_INDEX)
+
+    generateInterval(rowGen(301), rowGen(400), startInclude = true, endInclude = true)
+    assert(sampleRead.analyse(intervalArray) == StatsAnalysisResult.USE_INDEX)
+
+    generateInterval(dummyStart, dummyEnd,
+      startInclude = true, endInclude = true)
+    assert(sampleRead.analyse(intervalArray).coverage >= 0.9)
+
+    generateInterval(dummyStart, rowGen(0),
+      startInclude = true, endInclude = false)
+    assert(sampleRead.analyse(intervalArray) == StatsAnalysisResult.USE_INDEX)
+
+    generateInterval(dummyStart, rowGen(300),
+      startInclude = true, endInclude = true)
+    assert(sampleRead.analyse(intervalArray).coverage >= 0.9)
+
+    generateInterval(rowGen(0), dummyEnd,
+      startInclude = true, endInclude = true)
+    assert(sampleRead.analyse(intervalArray).coverage >= 0.9)
+
+    generateInterval(rowGen(1), dummyEnd,
+      startInclude = true, endInclude = true)
+    assert(sampleRead.analyse(intervalArray).coverage >= 0.9)
+
+    generateInterval(rowGen(300), dummyEnd,
+      startInclude = false, endInclude = true)
+    assert(sampleRead.analyse(intervalArray) == StatsAnalysisResult.USE_INDEX)
+
+    generateInterval(rowGen(301), dummyEnd,
+      startInclude = true, endInclude = true)
+    assert(sampleRead.analyse(intervalArray) == StatsAnalysisResult.USE_INDEX)
   }
 }

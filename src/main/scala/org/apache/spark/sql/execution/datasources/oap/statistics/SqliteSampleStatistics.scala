@@ -48,6 +48,24 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
   protected var rowCount: Int = 0
   protected var avgEq: Int = 0
 
+  private val partialOrdering = GenerateOrdering.create(StructType(schema.dropRight(1)))
+  private val ordering = GenerateOrdering.create(schema)
+
+  private def intervalIsEqual(interval: RangeInterval): Boolean = {
+    interval.start.numFields == schema.length &&
+      interval.end.numFields == schema.length &&
+      ordering.compare(interval.start, interval.end) == 0 &&
+      interval.startInclude && interval.endInclude
+  }
+
+  private def intervalIsValid(interval: RangeInterval): Boolean = {
+    if (interval.start.numFields == schema.length && interval.end.numFields == schema.length) {
+      ordering.compare(interval.start, interval.end) < 0
+    } else {
+      partialOrdering.compare(interval.start, interval.end) <= 0
+    }
+  }
+
   override def read(fiberCache: FiberCache, offset: Int): Int = {
     var readOffset = super.read(fiberCache, offset) + offset
 
@@ -74,12 +92,12 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
   }
 
   override def analyse(intervalArray: ArrayBuffer[RangeInterval]): StatsAnalysisResult = {
-    StatsAnalysisResult.USE_INDEX
+    val hitCount = intervalArray.map(interval => analyseInterval(interval)).sum
+    StatsAnalysisResult(hitCount.toDouble / rowCount)
   }
 
-  // Return the first greater or equal sample index, nLt, nEq for the key
-  private def estimateKey(key: Key): (Int, Int, Int) = {
-    val ordering = GenerateOrdering.create(schema)
+  // Return the first greater or equal sample's nLt, nEq for the key
+  private def estimateKey(key: Key): (Int, Int) = {
     var iSample = sampleArray.length
     var iMin = 0
     var iLower = 0
@@ -97,7 +115,7 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
     } while (res != 0 && iMin < iSample)
 
     if (res == 0) {
-      (iSample, sampleArray(iSample).nLt, sampleArray(iSample).nEq)
+      (sampleArray(iSample).nLt, sampleArray(iSample).nEq)
     } else {
       if (iSample >= sampleArray.length) {
         iUpper = rowCount
@@ -105,30 +123,25 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
         iUpper = sampleArray(iSample).nLt
       }
       val iGap = if (iLower >= iUpper) 0 else iUpper - iLower
-      (iSample, iLower + iGap / 3, avgEq)
+      (iLower + iGap / 3, avgEq)
     }
   }
 
   private def analyseInterval(interval: RangeInterval): Int = {
-    val ordering = GenerateOrdering.create(schema)
-    if (ordering.compare(interval.start, interval.end) == 0
-      && interval.startInclude && interval.endInclude) {
+    if (intervalIsEqual(interval)) {
         // Equal
-        val nEq = estimateKey(interval.start)._3
-        nEq
+        estimateKey(interval.start)._2
     } else {
       // Range
-      assert(ordering.compare(interval.start, interval.end) < 0)
-      var iLower = 0
-      var iUpper = rowCount
-      val (iLowerIdx, iLowerLt, iLowerEq) = estimateKey(interval.start)
-      val (iUpperIdx, iUpperLt, iUpperEq) = estimateKey(interval.end)
-      if (iLower < iLowerLt + iLowerEq) iLower = iLowerLt + iLowerEq
-      if (iUpper > iUpperLt + iLowerEq) iUpper = iUpperLt + iUpperEq
-      if (iUpper > iLower) {
-        iUpper - iLower
+      if (!intervalIsValid(interval)) {
+        0
       } else {
-        2
+        val (iLowerLt, iLowerEq) = estimateKey(interval.start)
+        val (iUpperLt, iUpperEq) = estimateKey(interval.end)
+
+        val iLower = if (0 < iLowerLt + iLowerEq) iLowerLt + iLowerEq else 0
+        val iUpper = if (rowCount > iUpperLt + iLowerEq) iUpperLt + iUpperEq else rowCount
+        if (iUpper - iLower >= 0) iUpper - iLower else 0
       }
     }
   }
