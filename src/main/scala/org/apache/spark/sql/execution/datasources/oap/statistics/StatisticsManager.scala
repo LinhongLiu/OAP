@@ -105,7 +105,7 @@ object StatisticsManager {
 
   val statisticsTypeMap: scala.collection.mutable.Map[OapIndexType, Array[String]] =
     scala.collection.mutable.Map(
-      BTreeIndexType -> Array("MINMAX", "SAMPLE", "BLOOM", "PARTBYVALUE"),
+      BTreeIndexType -> Array("MINMAX", "SAMPLE", "BLOOM", "PARTBYVALUE", "SQLITE"),
       BitMapIndexType -> Array.empty)
 
   def read(fiberCache: FiberCache, offset: Int, s: StructType): Array[StatisticsReader] = {

@@ -288,9 +288,9 @@ private[oap] class OapDataReaderV1(
           }
         }
 
-
         val start = if (log.isDebugEnabled) System.currentTimeMillis else 0
         val rows = getRowIds(options)
+        logWarning("oap reader: hitCount: " + rows.length + ", rowCount: " + _totalRows)
         val iter = fileScanner.iteratorWithRowIds(requiredIds, rows, filters)
         val end = if (log.isDebugEnabled) System.currentTimeMillis else 0
 

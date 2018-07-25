@@ -69,6 +69,7 @@ private[oap] class SampleBasedStatisticsReader(
           hitCnt += 1
         }
       }
+      logWarning("Sample: hitCnt: " + (hitCnt * 200) + ", rowCount: " + (sampleArray.length * 200))
       StatsAnalysisResult(hitCnt * 1.0 / sampleArray.length)
     }
   }

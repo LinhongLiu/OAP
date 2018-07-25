@@ -120,6 +120,7 @@ private[oap] class PartByValueStatisticsReader(schema: StructType)
 
       if (left == -1 || right == 0) {
         // interval.min > partition.max || interval.max < partition.min
+        logWarning("partbyvalue: hitCount: 0, rowCount: " + wholeCount)
         StatsAnalysisResult.SKIP_INDEX
       } else {
         var cover: Double =
@@ -133,6 +134,7 @@ private[oap] class PartByValueStatisticsReader(schema: StructType)
         if (right != -1) {
           cover -= 0.5 * (metas(right).accumulatorCnt - metas(right - 1).accumulatorCnt)
         }
+        logWarning("partbyvalue: hitCount: " + cover + ", rowCount: " + wholeCount)
 
         if (cover > wholeCount) {
           StatsAnalysisResult.FULL_SCAN

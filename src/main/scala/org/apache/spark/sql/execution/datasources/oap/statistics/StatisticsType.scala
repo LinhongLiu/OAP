@@ -33,6 +33,7 @@ private[oap] object StatisticsType {
     case TYPE_SAMPLE_BASE => Some(new SampleBasedStatisticsReader(_))
     case TYPE_PART_BY_VALUE => Some(new PartByValueStatisticsReader(_))
     case TYPE_BLOOM_FILTER => Some(new BloomFilterStatisticsReader(_))
+    case TYPE_SQLITE_SAMPLE => Some(new SampleStatisticsReader(_))
     case _ => None
   }
 
@@ -48,6 +49,9 @@ private[oap] object StatisticsType {
     case "BLOOM" =>
       Some((schema: StructType, conf: Configuration) =>
         new BloomFilterStatisticsWriter(schema, conf))
+    case "SQLITE" =>
+      Some((schema: StructType, conf: Configuration) =>
+        new SampleStatisticsWriter(schema, conf))
     case _ => None
   }
 }

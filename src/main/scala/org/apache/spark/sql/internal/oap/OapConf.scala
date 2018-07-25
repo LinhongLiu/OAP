@@ -57,8 +57,9 @@ object OapConf {
       .toSequence
       .transform(_.sorted)
       .checkValues(
-        Set("MINMAX", "SAMPLE", "PARTBYVALUE", "BLOOM").subsets().map(_.toSeq.sorted).toSet)
-      .createWithDefault(Seq("BLOOM", "MINMAX", "PARTBYVALUE", "SAMPLE"))
+        Set("MINMAX", "SAMPLE", "PARTBYVALUE", "BLOOM", "SQLITE")
+            .subsets().map(_.toSeq.sorted).toSet)
+      .createWithDefault(Seq("BLOOM", "MINMAX", "PARTBYVALUE", "SAMPLE", "SQLITE"))
 
   val OAP_STATISTICS_PART_NUM =
     SQLConfigBuilder("spark.sql.oap.statistics.partNum")

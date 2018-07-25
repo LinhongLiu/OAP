@@ -23,6 +23,7 @@ import scala.collection.mutable.ArrayBuffer
 
 import org.apache.hadoop.conf.Configuration
 
+import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.codegen.BaseOrdering
 import org.apache.spark.sql.execution.datasources.oap.Key
@@ -31,7 +32,7 @@ import org.apache.spark.sql.execution.datasources.oap.index._
 import org.apache.spark.sql.execution.datasources.oap.utils.{NonNullKeyReader, NonNullKeyWriter}
 import org.apache.spark.sql.types._
 
-abstract class StatisticsReader(schema: StructType) {
+abstract class StatisticsReader(schema: StructType) extends Logging {
   val id: Int
   @transient
   protected lazy val nnkr: NonNullKeyReader = new NonNullKeyReader(schema)

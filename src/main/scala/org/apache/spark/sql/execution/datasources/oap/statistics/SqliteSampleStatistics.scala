@@ -109,6 +109,7 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
 
   override def analyse(intervalArray: ArrayBuffer[RangeInterval]): StatsAnalysisResult = {
     val hitCount = intervalArray.map(interval => analyseInterval(interval)).sum
+    logWarning("Sqlite: hitCount: " + hitCount + ", rowCount: " + rowCount)
     StatsAnalysisResult(hitCount.toDouble / rowCount)
   }
 
@@ -179,7 +180,11 @@ private[oap] class SampleStatisticsWriter(
     val rowCount = sortedKeys.length
     // Sample size is 1% of rowCount. at least 24 samples in case too small row count.
     val mxSample = math.max(MIN_SAMPLE, (rowCount * SAMPLE_RATIO + 1).toInt)
-    sampleArray = takeSample(sortedKeys, mxSample)
+    if (sortedKeys.nonEmpty) {
+      sampleArray = takeSample(sortedKeys, mxSample)
+    } else {
+      sampleArray = Seq.empty
+    }
 
     var offset = super.write(writer, sortedKeys)
     IndexUtils.writeInt(writer, rowCount)
