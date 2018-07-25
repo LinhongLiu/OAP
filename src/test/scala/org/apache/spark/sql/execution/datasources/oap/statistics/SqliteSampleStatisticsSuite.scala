@@ -21,7 +21,9 @@ import java.io.ByteArrayOutputStream
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
+
 import org.apache.hadoop.conf.Configuration
+
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.JoinedRow
 import org.apache.spark.sql.execution.datasources.oap.index.{IndexScanner, IndexUtils}
