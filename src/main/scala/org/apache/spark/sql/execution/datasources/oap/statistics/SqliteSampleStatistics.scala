@@ -66,6 +66,22 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
     }
   }
 
+  private def compareKeyWithInterval(key: Key, intervalPoint: Key, isStart: Boolean): Int = {
+    assert(key.numFields == schema.length)
+    if (intervalPoint.numFields == schema.length) {
+      ordering.compare(key, intervalPoint)
+    } else {
+      val partResult = partialOrdering.compare(key, intervalPoint)
+      if (partResult == 0) {
+        // isStart && numFields < schema.length => DUMMY_START => key > intervalPoint
+        // !isStart && numFields < schema.length => DUMMY_END => key < intervalPoint
+        if (isStart) 1 else -1
+      } else {
+        partResult
+      }
+    }
+  }
+
   override def read(fiberCache: FiberCache, offset: Int): Int = {
     var readOffset = super.read(fiberCache, offset) + offset
 
@@ -97,7 +113,7 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
   }
 
   // Return the first greater or equal sample's nLt, nEq for the key
-  private def estimateKey(key: Key): (Int, Int) = {
+  private def estimateKey(intervalPoint: Key, isStart: Boolean): (Int, Int) = {
     var iSample = sampleArray.length
     var iMin = 0
     var iLower = 0
@@ -105,7 +121,7 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
     var res = 0
     do {
       val iTest = (iMin + iSample) / 2
-      res = ordering.compare(sampleArray(iTest).key, key)
+      res = compareKeyWithInterval(sampleArray(iTest).key, intervalPoint, isStart)
       if (res < 0) {
         iLower = sampleArray(iTest).nLt + sampleArray(iTest).nEq
         iMin = iTest + 1
@@ -130,14 +146,14 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
   private def analyseInterval(interval: RangeInterval): Int = {
     if (intervalIsEqual(interval)) {
         // Equal
-        estimateKey(interval.start)._2
+        estimateKey(interval.start, isStart = true)._2
     } else {
       // Range
       if (!intervalIsValid(interval)) {
         0
       } else {
-        val (iLowerLt, iLowerEq) = estimateKey(interval.start)
-        val (iUpperLt, iUpperEq) = estimateKey(interval.end)
+        val (iLowerLt, iLowerEq) = estimateKey(interval.start, isStart = true)
+        val (iUpperLt, iUpperEq) = estimateKey(interval.end, isStart = false)
 
         val iLower = if (0 < iLowerLt + iLowerEq) iLowerLt + iLowerEq else 0
         val iUpper = if (rowCount > iUpperLt + iLowerEq) iUpperLt + iUpperEq else rowCount
