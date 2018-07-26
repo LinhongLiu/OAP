@@ -101,16 +101,20 @@ private[oap] class SampleStatisticsReader(schema: StructType) extends Statistics
 
       rowOffset = fiberCache.getInt(readOffset + i * IndexUtils.INT_SIZE)
     }
-    avgEq = sampleArray.map(_.nEq).sum / sampleArray.length
+    avgEq = if (size == 0) 0 else sampleArray.map(_.nEq).sum / sampleArray.length
 
     readOffset += (rowOffset + size * IndexUtils.INT_SIZE)
     readOffset - offset
   }
 
   override def analyse(intervalArray: ArrayBuffer[RangeInterval]): StatsAnalysisResult = {
-    val hitCount = intervalArray.map(interval => analyseInterval(interval)).sum
-    logWarning("Sqlite: hitCount: " + hitCount + ", rowCount: " + rowCount)
-    StatsAnalysisResult(hitCount.toDouble / rowCount)
+    if (sampleArray == null || sampleArray.isEmpty) {
+      StatsAnalysisResult.USE_INDEX
+    } else {
+      val hitCount = intervalArray.map(interval => analyseInterval(interval)).sum
+      logWarning("Sqlite: hitCount: " + hitCount + ", rowCount: " + rowCount)
+      StatsAnalysisResult(hitCount.toDouble / rowCount)
+    }
   }
 
   // Return the first greater or equal sample's nLt, nEq for the key
