@@ -53,14 +53,12 @@ class StatisticsWriteManager {
   // When a task initialize statisticsWriteManager, we read all config from `conf`,
   // which is created from `SparkUtils`, hence containing all spark config values.
   def initialize(indexType: OapIndexType, s: StructType, conf: Configuration): Unit = {
-    /*
     val statsTypes = StatisticsManager.statisticsTypeMap(indexType).filter { statType =>
-      val typeFromConfig = conf.get(OapConf.OAP_STATISTICS_TYPES.key,
-        OapConf.OAP_STATISTICS_TYPES.defaultValueString).split(",").map(_.trim)
+      val typeFromConfig = Array("MINMAX", "SAMPLE", "BLOOM", "PARTBYVALUE", "SQLITE")
+      // val typeFromConfig = conf.get(OapConf.OAP_STATISTICS_TYPES.key,
+      //  OapConf.OAP_STATISTICS_TYPES.defaultValueString).split(",").map(_.trim)
       typeFromConfig.contains(statType)
     }
-    */
-    val statsTypes = Array("MINMAX", "SAMPLE", "BLOOM", "PARTBYVALUE", "SQLITE")
     schema = s
     stats = statsTypes.map {
       case StatisticsType(st) => st(s, conf)
