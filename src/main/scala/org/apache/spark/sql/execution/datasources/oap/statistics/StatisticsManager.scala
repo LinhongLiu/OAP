@@ -20,7 +20,9 @@ package org.apache.spark.sql.execution.datasources.oap.statistics
 import java.io.OutputStream
 
 import scala.collection.mutable.ArrayBuffer
+
 import org.apache.hadoop.conf.Configuration
+
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
 import org.apache.spark.sql.execution.datasources.oap.Key
