@@ -22,14 +22,16 @@ import java.sql.Date
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.scalatest.BeforeAndAfterEach
-
 import org.apache.spark.sql.{QueryTest, Row}
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
+import org.apache.spark.sql.execution.datasources.oap.index.{BTreeIndexRecordReader, BTreeIndexRecordReaderV1}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.internal.oap.OapConf
 import org.apache.spark.sql.test.oap.{SharedOapContext, TestIndex, TestPartition}
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
 import org.apache.spark.util.Utils
+
+import scala.collection.mutable.ArrayBuffer
 
 class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEach {
 
@@ -1063,5 +1065,13 @@ class FilterSuite extends QueryTest with SharedOapContext with BeforeAndAfterEac
           Row(1, "this is test 1"):: Nil)
       }
     }
+  }
+
+  test("new test") {
+    val file = new Path("/root/linhong.index")
+    val schema = StructType(StructField("a", IntegerType) :: Nil)
+    val conf = new Configuration()
+    val reader = BTreeIndexRecordReader(conf, schema, file)
+    reader.analyzeStatistics(schema, ArrayBuffer.empty)
   }
 }

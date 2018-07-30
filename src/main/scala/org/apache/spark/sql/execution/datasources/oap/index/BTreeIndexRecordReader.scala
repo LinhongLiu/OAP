@@ -370,7 +370,7 @@ private[index] abstract class BTreeIndexRecordReader(
 
 }
 
-private[index] object BTreeIndexRecordReader {
+private[oap] object BTreeIndexRecordReader {
   def apply(
       configuration: Configuration,
       schema: StructType,
