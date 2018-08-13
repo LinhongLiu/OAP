@@ -29,10 +29,8 @@ import org.elasticsearch.common.xcontent.XContentFactory
 import org.elasticsearch.index.query.QueryBuilders
 
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.oap.Key
 import org.apache.spark.sql.execution.datasources.parquet.OapTransportClient
-import org.apache.spark.unsafe.types.UTF8String
 
 class OapEsIndex(host: String, port: Int) extends OapEsUtil with Logging {
 

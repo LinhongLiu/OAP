@@ -55,7 +55,26 @@ class OapEsIndexSuite extends SharedOapContext {
     }
     es.batchInsert(records, "data.idx1.index", TEST_TABLE_NAME)
     val ids = es.queryAllRecordIds(TEST_TABLE_NAME)
-    assert(ids == (1 to 10).map(_.toString))
+    assert(ids.toSet == (1 to 10).map(_.toString).toSet)
+    es.dropESTableIndex(TEST_TABLE_NAME)
+  }
+
+  test("query records ids by index file name") {
+    es.createEsTableIndex(TEST_TABLE_NAME)
+    val records1 = (1 to 10).map { x =>
+      val key = InternalRow.fromSeq(UTF8String.fromString(s"test$x") :: Nil)
+      (key, x)
+    }
+    es.batchInsert(records1, "data.idx1.index", TEST_TABLE_NAME)
+
+    val records2 = (11 to 20).map { x =>
+      val key = InternalRow.fromSeq(UTF8String.fromString(s"test$x") :: Nil)
+      (key, x)
+    }
+    es.batchInsert(records2, "data.idx2.index", TEST_TABLE_NAME)
+
+    val ids = es.queryIdsByIndexFileName("data.idx1.index", TEST_TABLE_NAME)
+    assert(ids.toSet == (1 to 10).map(_.toString).toSet)
     es.dropESTableIndex(TEST_TABLE_NAME)
   }
 
@@ -76,7 +95,7 @@ class OapEsIndexSuite extends SharedOapContext {
     es.batchDelete("data.idx1.index", TEST_TABLE_NAME)
 
     val ids = es.queryAllRecordIds(TEST_TABLE_NAME)
-    assert(ids == (11 to 20).map(_.toString))
+    assert(ids.toSet == (11 to 20).map(_.toString).toSet)
     es.dropESTableIndex(TEST_TABLE_NAME)
   }
 }

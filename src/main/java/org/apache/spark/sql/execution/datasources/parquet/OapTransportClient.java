@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.spark.sql.execution.datasources.parquet;
 
 import java.util.ArrayList;
@@ -23,9 +40,9 @@ import io.netty.util.concurrent.GlobalEventExecutor;
 public class OapTransportClient extends TransportClient {
 
     /**
-     * Netty wants to do some unwelcome things like use unsafe and replace a private field, or use a poorly considered
-     * buffer recycler. This method disables these things by default, but can be overridden by setting the corresponding
-     * system properties.
+     * Netty wants to do some unwelcome things like use unsafe and replace a private field, or use
+     * a poorly considered buffer recycler. This method disables these things by default, but can
+     * be overridden by setting the corresponding system properties.
      */
     private static void initializeNetty() {
         /*
@@ -34,8 +51,9 @@ public class OapTransportClient extends TransportClient {
          *  - we disable Netty from replacing the selector key set
          *  - we disable Netty from using the recycler
          *
-         * While permissions are needed to read and set these, the permissions needed here are innocuous and thus should simply be granted
-         * rather than us handling a security exception here.
+         * While permissions are needed to read and set these, the permissions needed here are
+         * innocuous and thus should simply be granted rather than us handling a security
+         * exception here.
          */
         setSystemPropertyIfUnset("io.netty.noUnsafe", Boolean.toString(true));
         setSystemPropertyIfUnset("io.netty.noKeySetOptimization", Boolean.toString(true));
@@ -78,7 +96,8 @@ public class OapTransportClient extends TransportClient {
     public void close() {
         super.close();
         if (NetworkModule.TRANSPORT_TYPE_SETTING.exists(settings) == false
-                || NetworkModule.TRANSPORT_TYPE_SETTING.get(settings).equals(Netty4Plugin.NETTY_TRANSPORT_NAME)) {
+                || NetworkModule.TRANSPORT_TYPE_SETTING.get(settings).equals(
+                        Netty4Plugin.NETTY_TRANSPORT_NAME)) {
             try {
                 GlobalEventExecutor.INSTANCE.awaitInactivity(5, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
