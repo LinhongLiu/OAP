@@ -28,26 +28,26 @@ class OapEsIndexSuite extends SharedOapContext {
   private val TEST_TABLE_NAME = "test_table"
   private val es = new OapEsIndex(TEST_HOST, TEST_PORT)
 
-  test("index exists check") {
+  ignore("index exists check") {
     es.createEsTableIndex(TEST_TABLE_NAME)
     assert(es.checkEsTableIndexExists(TEST_TABLE_NAME))
     es.dropESTableIndex(TEST_TABLE_NAME)
     assert(!es.checkEsTableIndexExists(TEST_TABLE_NAME))
   }
 
-  test("es table index create") {
+  ignore("es table index create") {
     es.createEsTableIndex(TEST_TABLE_NAME)
     assert(es.checkEsTableIndexExists(TEST_TABLE_NAME))
     es.dropESTableIndex(TEST_TABLE_NAME)
   }
 
-  test("es table index drop") {
+  ignore("es table index drop") {
     es.createEsTableIndex(TEST_TABLE_NAME)
     es.dropESTableIndex(TEST_TABLE_NAME)
     assert(!es.checkEsTableIndexExists(TEST_TABLE_NAME))
   }
 
-  test("insert records to es table") {
+  ignore("insert records to es table") {
     es.createEsTableIndex(TEST_TABLE_NAME)
     val records = (1 to 10).map { x =>
       val key = InternalRow.fromSeq(UTF8String.fromString(s"test$x") :: Nil)
@@ -59,7 +59,7 @@ class OapEsIndexSuite extends SharedOapContext {
     es.dropESTableIndex(TEST_TABLE_NAME)
   }
 
-  test("query records ids by index file name") {
+  ignore("query records ids by index file name") {
     es.createEsTableIndex(TEST_TABLE_NAME)
     val records1 = (1 to 10).map { x =>
       val key = InternalRow.fromSeq(UTF8String.fromString(s"test$x") :: Nil)
@@ -78,7 +78,7 @@ class OapEsIndexSuite extends SharedOapContext {
     es.dropESTableIndex(TEST_TABLE_NAME)
   }
 
-  test("drop records for oap index from es") {
+  ignore("drop records for oap index from es") {
     es.createEsTableIndex(TEST_TABLE_NAME)
     val records1 = (1 to 10).map { x =>
       val key = InternalRow.fromSeq(UTF8String.fromString(s"test$x") :: Nil)
