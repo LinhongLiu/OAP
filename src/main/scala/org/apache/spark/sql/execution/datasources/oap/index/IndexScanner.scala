@@ -322,7 +322,6 @@ private[oap] object ScannerBuilder extends Logging {
 
     filters.filterNot(canSupport(_, ic))
   }
-
 }
 
 private[oap] class IndexScanners(val scanners: Seq[IndexScanner])

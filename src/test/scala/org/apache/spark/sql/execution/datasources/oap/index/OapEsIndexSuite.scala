@@ -20,6 +20,7 @@ package org.apache.spark.sql.execution.datasources.oap.index
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.test.oap.SharedOapContext
 import org.apache.spark.unsafe.types.UTF8String
+import org.apache.spark.util.Utils
 
 class OapEsIndexSuite extends SharedOapContext {
 
@@ -27,6 +28,29 @@ class OapEsIndexSuite extends SharedOapContext {
   private val TEST_PORT = 9300
   private val TEST_TABLE_NAME = "test_table"
   private val es = new OapEsIndex(TEST_HOST, TEST_PORT)
+
+  // Skip file leak checking
+  override def beforeEach(): Unit = {}
+  override def afterEach(): Unit = {}
+
+  test("test create index ddl") {
+    val path = Utils.createTempDir().getAbsolutePath
+    sql(s"""CREATE TEMPORARY VIEW oap_test (a INT, b STRING)
+           | USING oap
+           | OPTIONS (path '$path')""".stripMargin)
+
+    val strings = Seq("abcde", "bbcdb", "aacbb", "baccc", "ddddd").toArray
+    val data = (1 to 100).map(i => (i, strings(i % strings.length)))
+    spark.createDataFrame(data).createOrReplaceTempView("t")
+    sql("INSERT OVERWRITE TABLE oap_test SELECT * FROM t")
+
+    sql("SELECT * FROM oap_test").show()
+    sql("CREATE OINDEX es_index ON oap_test (b) USING ES")
+    sql("SELECT * FROM oap_test WHERE b = 'abcde'").show()
+    sql("SELECT * FROM oap_test WHERE b like 'aaa%'").show()
+    sql("DROP OINDEX es_index ON oap_test")
+    sqlContext.dropTempTable("oap_test")
+  }
 
   ignore("index exists check") {
     es.createEsTableIndex(TEST_TABLE_NAME)

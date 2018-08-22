@@ -17,18 +17,21 @@
 
 package org.apache.spark.sql.execution.datasources.oap.index
 
-sealed abstract class OapIndexType {
-  def toString: String
-}
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.Path
 
-case object BTreeIndexType extends OapIndexType {
-  override def toString: String = "BTREE"
-}
+import org.apache.spark.sql.execution.datasources.OapException
+import org.apache.spark.sql.execution.datasources.oap.IndexMeta
 
-case object BitMapIndexType extends OapIndexType {
-  override def toString: String = "BITMAP"
-}
+case class ESScanner(idxMeta: IndexMeta) extends IndexScanner(idxMeta) {
 
-case object ESIndexType extends OapIndexType {
-  override def toString: String = "ES"
+  override def totalRows(): Long = 0
+
+  override def initialize(dataPath: Path, conf: Configuration): IndexScanner = {
+    this
+  }
+
+  override def hasNext: Boolean = false
+
+  override def next(): Int = throw new OapException("never reach")
 }

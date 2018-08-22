@@ -17,18 +17,17 @@
 
 package org.apache.spark.sql.execution.datasources.oap.index
 
-sealed abstract class OapIndexType {
-  def toString: String
-}
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.mapreduce.{RecordWriter, TaskAttemptContext}
 
-case object BTreeIndexType extends OapIndexType {
-  override def toString: String = "BTREE"
-}
+import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.types.StructType
 
-case object BitMapIndexType extends OapIndexType {
-  override def toString: String = "BITMAP"
-}
+class ESIndexRecordWriter(
+  configuration: Configuration,
+  keySchema: StructType) extends RecordWriter[Void, InternalRow] {
 
-case object ESIndexType extends OapIndexType {
-  override def toString: String = "ES"
+  override def close(taskAttemptContext: TaskAttemptContext): Unit = {}
+
+  override def write(k: Void, v: InternalRow): Unit = {}
 }

@@ -282,7 +282,6 @@ private[sql] class OapFileFormat extends FileFormat
               throw new OapException("Unexpected data file version")
               Iterator.empty
           }
-
         }
       case None => (_: PartitionedFile) => {
         // TODO need to think about when there is no oap.meta file at all

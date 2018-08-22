@@ -134,6 +134,13 @@ case class CreateIndexCommand(
           val entries = indexColumns.map(col =>
             schema.map(_.name).toIndexedSeq.indexOf(col.columnName))
           metaBuilder.addIndexMeta(new IndexMeta(indexName, time, BitMapIndex(entries)))
+        case ESIndexType =>
+          if (indexColumns.length != 1) {
+            throw new OapException("ESIndexType only supports one single column")
+          }
+          val entries = indexColumns.map(col =>
+            schema.map(_.name).toIndexedSeq.indexOf(col.columnName))
+          metaBuilder.addIndexMeta(new IndexMeta(indexName, time, ESIndex(entries)))
         case _ =>
           sys.error(s"Not supported index type $indexType")
       }

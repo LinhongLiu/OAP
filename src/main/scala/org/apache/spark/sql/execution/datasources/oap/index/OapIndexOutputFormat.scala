@@ -83,6 +83,8 @@ private[index] class OapIndexOutputFormat extends FileOutputFormat[Void, Interna
     } else if (indexType == "BITMAP") {
       val writer = file.getFileSystem(configuration).create(file, true)
       new BitmapIndexRecordWriter(configuration, writer, schema)
+    } else if (indexType == "ES") {
+      new ESIndexRecordWriter(configuration, schema)
     } else {
       throw new OapException("Unknown Index Type: " + indexType)
     }

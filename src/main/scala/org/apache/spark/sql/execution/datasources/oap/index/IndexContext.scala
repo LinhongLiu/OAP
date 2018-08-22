@@ -57,8 +57,8 @@ private[oap] class IndexContext(meta: DataSourceMeta) extends Logging {
     logDebug("Selecting Available Index:")
     val indexDisableList = indexDisableListStr.split(",").map(_.trim).toSeq
 
-    meta.indexMetas.filterNot(meta => indexDisableList.contains(meta.name)).foreach {
-      indexMeta => indexMeta.indexType match {
+    meta.indexMetas.filterNot(meta => indexDisableList.contains(meta.name)).foreach { indexMeta =>
+      indexMeta.indexType match {
         case BTreeIndex(entries) if entries.length == 1 =>
           val attribute = meta.schema(entries(0).ordinal).name
           if (intervalMap.contains(attribute)) {
@@ -94,6 +94,12 @@ private[oap] class IndexContext(meta: DataSourceMeta) extends Logging {
             availableIndexes.append((num - 1, indexMeta))
           }
         case BitMapIndex(entries) =>
+          for (entry <- entries) {
+            if (intervalMap.contains(meta.schema(entry).name)) {
+              availableIndexes.append((entries.indexOf(entry), indexMeta))
+            }
+          }
+        case ESIndex(entries) =>
           for (entry <- entries) {
             if (intervalMap.contains(meta.schema(entry).name)) {
               availableIndexes.append((entries.indexOf(entry), indexMeta))
@@ -142,6 +148,8 @@ private[oap] class IndexContext(meta: DataSourceMeta) extends Logging {
         case BTreeIndex(entries) =>
           entries.map(entry => meta.schema(entry.ordinal).name)
         case BitMapIndex(entries) =>
+          entries.map(entry => meta.schema(entry).name)
+        case ESIndex(entries) =>
           entries.map(entry => meta.schema(entry).name)
         case _ => Seq.empty
       }
@@ -292,6 +300,14 @@ private[oap] class IndexContext(meta: DataSourceMeta) extends Logging {
           scanner = BitMapScanner(bestIndexer)
           logDebug("Bitmap index only supports equal query.")
           scanner.intervalArray = singleValueIntervalArray
+        }
+      case ESIndex(entries) =>
+        val attribute = meta.schema(entries(lastIdx)).name
+        val likeIntervals = intervalMap(attribute).filter(_.isPrefixMatch)
+        if (likeIntervals.length == 1) {
+          keySchema = new StructType().add(meta.schema(entries(lastIdx)))
+          scanner = ESScanner(bestIndexer)
+          scanner.intervalArray = likeIntervals
         }
       case _ =>
     }
