@@ -22,10 +22,10 @@ import org.apache.hadoop.mapreduce.{RecordWriter, TaskAttemptContext}
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat
 import org.apache.parquet.format.CompressionCodec
 import org.apache.parquet.hadoop.util.ContextUtil
-
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.datasources.OapException
 import org.apache.spark.sql.execution.datasources.oap.index.OapIndexProperties.IndexVersion
+import org.apache.spark.sql.execution.datasources.oap.index.elasticsearch.EsIndexRecordWriter
 import org.apache.spark.sql.internal.oap.OapConf
 import org.apache.spark.sql.types.StructType
 
@@ -84,7 +84,7 @@ private[index] class OapIndexOutputFormat extends FileOutputFormat[Void, Interna
       val writer = file.getFileSystem(configuration).create(file, true)
       new BitmapIndexRecordWriter(configuration, writer, schema)
     } else if (indexType == "ES") {
-      new ESIndexRecordWriter(configuration, schema)
+      new EsIndexRecordWriter(configuration, file, schema)
     } else {
       throw new OapException("Unknown Index Type: " + indexType)
     }

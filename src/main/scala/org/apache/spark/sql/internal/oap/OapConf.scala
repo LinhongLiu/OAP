@@ -245,4 +245,18 @@ object OapConf {
         "is empty, it will store in the data file path")
       .stringConf
       .createWithDefault("")
+
+  val OAP_ELASTICSEARCH_HOST =
+    SqlConfAdapter.buildConf("spark.sql.oap.elasticsearch.host")
+      .internal()
+      .doc("elasticsearch host address")
+      .stringConf
+      .createWithDefault("127.0.0.1")
+
+  val OAP_ELASTICSEARCH_PORT =
+    SqlConfAdapter.buildConf("spark.sql.oap.elasticsearch.port")
+      .internal()
+      .doc("elasticsearch port")
+      .intConf
+      .createWithDefault(9300)
 }

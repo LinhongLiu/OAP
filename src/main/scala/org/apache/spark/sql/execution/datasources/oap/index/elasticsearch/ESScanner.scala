@@ -15,23 +15,37 @@
  * limitations under the License.
  */
 
-package org.apache.spark.sql.execution.datasources.oap.index
+package org.apache.spark.sql.execution.datasources.oap.index.elasticsearch
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 
-import org.apache.spark.sql.execution.datasources.OapException
 import org.apache.spark.sql.execution.datasources.oap.IndexMeta
+import org.apache.spark.sql.execution.datasources.oap.index.{IndexScanner, IndexUtils}
 
 case class ESScanner(idxMeta: IndexMeta) extends IndexScanner(idxMeta) {
 
-  override def totalRows(): Long = 0
+  // TODO: return all rows in one data file
+  override def totalRows(): Long = _totalRows
+
+  @transient private var internalIter: Iterator[Int] = _
+  @transient private var _totalRows: Long = _
 
   override def initialize(dataPath: Path, conf: Configuration): IndexScanner = {
+
+    val client = OapEsClientRepository.getOrCreateOapEsClient()
+
+    val indexPath = IndexUtils.getIndexFilePath(conf, dataPath, meta.name, meta.time)
+
+    val rowIds = client.fullFetch("", indexPath.getName, OapEsProperties.ES_INDEX_NAME)
+    _totalRows = rowIds.length
+
+    internalIter = rowIds.toIterator
+
     this
   }
 
-  override def hasNext: Boolean = false
+  override def hasNext: Boolean = internalIter.hasNext
 
-  override def next(): Int = throw new OapException("never reach")
+  override def next(): Int = internalIter.next()
 }

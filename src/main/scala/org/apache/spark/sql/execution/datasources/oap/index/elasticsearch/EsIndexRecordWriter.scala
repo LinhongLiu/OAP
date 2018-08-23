@@ -15,19 +15,44 @@
  * limitations under the License.
  */
 
-package org.apache.spark.sql.execution.datasources.oap.index
+package org.apache.spark.sql.execution.datasources.oap.index.elasticsearch
+
+import scala.collection.mutable.ArrayBuffer
 
 import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.Path
 import org.apache.hadoop.mapreduce.{RecordWriter, TaskAttemptContext}
 
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.types.StructType
 
-class ESIndexRecordWriter(
+class EsIndexRecordWriter(
   configuration: Configuration,
+  indexPath: Path,
   keySchema: StructType) extends RecordWriter[Void, InternalRow] {
 
-  override def close(taskAttemptContext: TaskAttemptContext): Unit = {}
+  private val client = OapEsClientRepository.getOrCreateOapEsClient()
+  private var recordCount = 0
 
-  override def write(k: Void, v: InternalRow): Unit = {}
+  private val bufferedRecords = new ArrayBuffer[(String, Int)]()
+
+  private def flushBufferedRows(): Unit = {
+    client.batchInsert(bufferedRecords, indexPath.getName, OapEsProperties.ES_INDEX_NAME)
+    bufferedRecords.clear()
+  }
+
+  override def close(taskAttemptContext: TaskAttemptContext): Unit = {
+    flushBufferedRows()
+    // Just touch a file without any content
+    val file = indexPath.getFileSystem(configuration).create(indexPath)
+    file.close()
+  }
+
+  override def write(k: Void, v: InternalRow): Unit = {
+    if (bufferedRecords.length == 100) {
+      flushBufferedRows()
+    }
+    bufferedRecords.append((v.get(0, keySchema.head.dataType).toString, recordCount))
+    recordCount += 1
+  }
 }

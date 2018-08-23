@@ -21,14 +21,15 @@ import org.elasticsearch.client.transport.TransportClient
 
 import org.apache.spark.sql.execution.datasources.oap.Key
 
+/**
+ * This should be a wrapper of [[TransportClient]], providing several APIs to access ES server.
+ */
 trait OapEsUtil {
 
   /**
-   * Pick one idle connection from connection pool
-   *
-   * @return the idle ES TransportClient
+   * client to send requests to ES server
    */
-  protected def getEsClient: TransportClient
+  protected def transportClient: TransportClient
 
   /**
    * create an ES index for one OAP table

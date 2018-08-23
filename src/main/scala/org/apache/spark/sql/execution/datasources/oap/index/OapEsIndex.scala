@@ -32,6 +32,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.sql.execution.datasources.oap.Key
 import org.apache.spark.sql.execution.datasources.parquet.OapTransportClient
 
+/*
 class OapEsIndex(host: String, port: Int) extends OapEsUtil with Logging {
 
   // We only use one document type in ES.
@@ -56,6 +57,8 @@ class OapEsIndex(host: String, port: Int) extends OapEsUtil with Logging {
                 .field("type", "text")
                 .field("store", "yes")
                 .field("index", "analyzed")
+                // TODO: Remove this in production
+                .field("fielddata", "true")
               .endObject()
               // index file name = data file name + index name
               .startObject("index_file_name")
@@ -115,7 +118,7 @@ class OapEsIndex(host: String, port: Int) extends OapEsUtil with Logging {
         .field("rowId", rowId)
         .endObject()
       val indexRequest = client.prepareIndex(tableName, docType)
-        .setSource(obj).setId(rowId.toString)
+        .setSource(obj)
       bulkRequest.add(indexRequest)
     }
     bulkRequest.execute().actionGet()
@@ -128,6 +131,7 @@ class OapEsIndex(host: String, port: Int) extends OapEsUtil with Logging {
     val response = client.prepareSearch(tableIndexName)
       .setTypes(docType)
       .addDocValueField("rowId")
+      .addDocValueField("index_file_name")
       .setQuery(queryBuilder).setSize(100).execute().actionGet()
 
     response.getHits.getHits.map(_.getId)
@@ -141,7 +145,7 @@ class OapEsIndex(host: String, port: Int) extends OapEsUtil with Logging {
       .addDocValueField("rowId")
       .setQuery(queryBuilder).setSize(100).execute().actionGet()
 
-    response.getHits.getHits.map(_.getId)
+    response.getHits.getHits.map(_.getField("rowId").getValue.toString)
   }
 
   /**
@@ -251,3 +255,4 @@ class OapEsIndex(host: String, port: Int) extends OapEsUtil with Logging {
   override def fullFetch(query: String, oapIndexFileName: String): Seq[Int] =
     throw new NotImplementedError()
 }
+*/

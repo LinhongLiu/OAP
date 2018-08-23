@@ -15,8 +15,10 @@
  * limitations under the License.
  */
 
-package org.apache.spark.sql.execution.datasources.oap.index
+package org.apache.spark.sql.execution.datasources.oap.index.elasticsearch
 
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.Path
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.test.oap.SharedOapContext
 import org.apache.spark.unsafe.types.UTF8String
@@ -24,17 +26,21 @@ import org.apache.spark.util.Utils
 
 class OapEsIndexSuite extends SharedOapContext {
 
-  private val TEST_HOST = "127.0.0.1"
-  private val TEST_PORT = 9300
-  private val TEST_TABLE_NAME = "test_table"
-  private val es = new OapEsIndex(TEST_HOST, TEST_PORT)
 
   // Skip file leak checking
   override def beforeEach(): Unit = {}
   override def afterEach(): Unit = {}
 
+  // scalastyle:off println
   test("test create index ddl") {
+    val es = OapEsClientRepository.getOrCreateOapEsClient()
     val path = Utils.createTempDir().getAbsolutePath
+
+    if (es.checkEsIndexExists(OapEsProperties.ES_INDEX_NAME)) {
+      es.dropEsIndex(OapEsProperties.ES_INDEX_NAME)
+    }
+    es.createEsIndex(OapEsProperties.ES_INDEX_NAME)
+
     sql(s"""CREATE TEMPORARY VIEW oap_test (a INT, b STRING)
            | USING oap
            | OPTIONS (path '$path')""".stripMargin)
@@ -44,15 +50,33 @@ class OapEsIndexSuite extends SharedOapContext {
     spark.createDataFrame(data).createOrReplaceTempView("t")
     sql("INSERT OVERWRITE TABLE oap_test SELECT * FROM t")
 
-    sql("SELECT * FROM oap_test").show()
+    // sql("SELECT * FROM oap_test").show()
     sql("CREATE OINDEX es_index ON oap_test (b) USING ES")
-    sql("SELECT * FROM oap_test WHERE b = 'abcde'").show()
-    sql("SELECT * FROM oap_test WHERE b like 'aaa%'").show()
+    // sql("SELECT * FROM oap_test WHERE b = 'abcde'").show()
+    sql("SELECT * FROM oap_test WHERE b like '%ab%'").show()
+
+    val file = new Path(path)
+    val l = file.getFileSystem(new Configuration()).listStatus(file)
+
+    val indexFiles = l.filter(f => f.getPath.getName.contains("es_index")).map(_.getPath.getName)
+    println(indexFiles.mkString("\n"))
+    // es.batchDelete(indexFiles, "all_oap_es_index")
+    // println(es.queryAllRecordIds("all_oap_es_index").mkString(", "))
+
+    // println(l.map(f => f.getPath.getName).mkString("\n"))
+
+    /*
+    es.batchDelete(indexFiles, "all_oap_es_index")
+
+    es.dropESTableIndex("all_oap_es_index")
     sql("DROP OINDEX es_index ON oap_test")
     sqlContext.dropTempTable("oap_test")
+    */
   }
+  // scalastyle:on println
 
-  ignore("index exists check") {
+  /*
+  test("index exists check") {
     es.createEsTableIndex(TEST_TABLE_NAME)
     assert(es.checkEsTableIndexExists(TEST_TABLE_NAME))
     es.dropESTableIndex(TEST_TABLE_NAME)
@@ -122,4 +146,5 @@ class OapEsIndexSuite extends SharedOapContext {
     assert(ids.toSet == (11 to 20).map(_.toString).toSet)
     es.dropESTableIndex(TEST_TABLE_NAME)
   }
+  */
 }

@@ -19,13 +19,13 @@ package org.apache.spark.sql.execution.datasources.oap.index
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.{CatalystTypeConverters, InternalRow}
 import org.apache.spark.sql.catalyst.expressions.JoinedRow
 import org.apache.spark.sql.catalyst.expressions.codegen.GenerateOrdering
 import org.apache.spark.sql.execution.datasources.oap._
 import org.apache.spark.sql.execution.datasources.oap.index.ScannerBuilder.IntervalArrayMap
+import org.apache.spark.sql.execution.datasources.oap.index.elasticsearch.ESScanner
 import org.apache.spark.sql.types.StructType
 
 private[oap] class IndexContext(meta: DataSourceMeta) extends Logging {
