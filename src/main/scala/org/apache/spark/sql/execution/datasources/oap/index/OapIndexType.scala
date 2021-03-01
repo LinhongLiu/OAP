@@ -28,3 +28,7 @@ case object BTreeIndexType extends OapIndexType {
 case object BitMapIndexType extends OapIndexType {
   override def toString: String = "BITMAP"
 }
+
+case object ESIndexType extends OapIndexType {
+  override def toString: String = "ES"
+}

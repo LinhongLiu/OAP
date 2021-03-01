@@ -37,6 +37,7 @@
     <maven.compiler.useIncrementalCompilation>false</maven.compiler.useIncrementalCompilation>
     <basedir>./</basedir>
     <jetty.version>9.2.16.v20160414</jetty.version>
+    <elasticsearch.version>5.6.4</elasticsearch.version>
   </properties>
 
   <repositories>
@@ -306,6 +307,34 @@
       <version>2.13.0</version>
       <scope>test</scope>
     </dependency>
+
+    <dependency>
+      <groupId>org.elasticsearch</groupId>
+      <artifactId>elasticsearch</artifactId>
+      <version>${elasticsearch.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.elasticsearch.client</groupId>
+      <artifactId>transport</artifactId>
+      <version>${elasticsearch.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>commons-logging</groupId>
+          <artifactId>commons-logging</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.elasticsearch.plugin</groupId>
+          <artifactId>transport-netty3-client</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>org.elasticsearch.plugin</groupId>
+      <artifactId>transport-netty4-client</artifactId>
+      <version>${elasticsearch.version}</version>
+    </dependency>
   </dependencies>
 
   <build>
@@ -446,9 +475,9 @@
             </jvmArgs>
             <javacArgs>
               <javacArg>-source</javacArg>
-              <javacArg>1.7</javacArg>
+              <javacArg>${java.version}</javacArg>
               <javacArg>-target</javacArg>
-              <javacArg>1.7</javacArg>
+              <javacArg>${java.version}</javacArg>
               <javacArg>-Xlint:all,-serial,-path</javacArg>
             </javacArgs>
           </configuration>
@@ -498,8 +527,8 @@
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.3</version>
         <configuration>
-          <source>1.7</source>
-          <target>1.7</target>
+          <source>${java.version}</source>
+          <target>${java.version}</target>
           <encoding>UTF-8</encoding>
           <maxmem>1024m</maxmem>
           <fork>true</fork>
@@ -570,6 +599,7 @@
         <spark.internal.version>2.1.0</spark.internal.version>
         <scala.version>2.11.8</scala.version>
         <scala.binary.version>2.11</scala.binary.version>
+        <java.version>1.7</java.version>
       </properties>
       <build>
         <plugins>
@@ -595,6 +625,7 @@
             <configuration>
               <excludes>
                 <exclude>src/main/spark2.2</exclude>
+                <exclude>src/main/spark2.3</exclude>
               </excludes>
             </configuration>
           </plugin>
@@ -627,6 +658,7 @@
         <spark.internal.version>2.2.0</spark.internal.version>
         <scala.version>2.11.8</scala.version>
         <scala.binary.version>2.11</scala.binary.version>
+        <java.version>1.8</java.version>
       </properties>
       <build>
         <plugins>
@@ -652,6 +684,7 @@
             <configuration>
               <excludes>
                 <exclude>src/main/spark2.1</exclude>
+                <exclude>src/main/spark2.3</exclude>
               </excludes>
             </configuration>
           </plugin>
@@ -669,6 +702,65 @@
                 <configuration>
                   <sources>
                     <source>src/main/spark2.2</source>
+                  </sources>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>spark-2.3</id>
+      <properties>
+        <spark.version>2.3.0</spark.version>
+        <spark.internal.version>2.3.0</spark.internal.version>
+        <scala.version>2.11.8</scala.version>
+        <scala.binary.version>2.11</scala.binary.version>
+        <java.version>1.8</java.version>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.antlr</groupId>
+            <artifactId>antlr4-maven-plugin</artifactId>
+            <version>4.5.3</version>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>antlr4</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <visitor>true</visitor>
+              <sourceDirectory>src/main/spark2.3/antlr4</sourceDirectory>
+            </configuration>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <configuration>
+              <excludes>
+                <exclude>src/main/spark2.1</exclude>
+                <exclude>src/main/spark2.2</exclude>
+              </excludes>
+            </configuration>
+          </plugin>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>build-helper-maven-plugin</artifactId>
+            <version>3.0.0</version>
+            <executions>
+              <execution>
+                <id>add-source</id>
+                <phase>generate-sources</phase>
+                <goals>
+                  <goal>add-source</goal>
+                </goals>
+                <configuration>
+                  <sources>
+                    <source>src/main/spark2.3</source>
                   </sources>
                 </configuration>
               </execution>
